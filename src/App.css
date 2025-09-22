@@ -1,7 +1,26 @@
 .App {
-  text-align: center;
-  background-color: #1a1a1a;
-  min-height: 100vh;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #0d1117;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: 250px;
+  padding: 0;
+  overflow-y: auto;
+  background-color: #0d1117;
+  width: calc(100vw - 250px);
+  height: 100vh;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 200px;
+    width: calc(100vw - 200px);
+  }
 }
 
 .App-logo {
