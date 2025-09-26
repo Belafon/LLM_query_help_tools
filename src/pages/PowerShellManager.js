@@ -117,6 +117,7 @@ const PowerShellManager = () => {
 
   const handleCreateNew = () => {
     setCurrentView('create');
+    setSelectedScript(null);
     setScriptName('');
     setScriptContent('');
     setEditMode(true);
@@ -145,9 +146,7 @@ const PowerShellManager = () => {
       ...scripts,
       [scriptId]: {
         name: scriptName.trim(),
-        content: scriptContent,
-        createdAt: scripts[scriptId]?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        content: scriptContent
       }
     };
 
@@ -257,12 +256,6 @@ const PowerShellManager = () => {
             <div key={scriptId} className="script-card">
               <div className="script-info">
                 <h3>{script.name}</h3>
-                <p className="script-meta">
-                  Created: {new Date(script.createdAt).toLocaleDateString()}
-                </p>
-                <p className="script-meta">
-                  Updated: {new Date(script.updatedAt).toLocaleDateString()}
-                </p>
               </div>
               <div className="script-actions">
                 <button 
