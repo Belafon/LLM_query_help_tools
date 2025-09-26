@@ -1,4 +1,5 @@
 import FileProcessor from '../pages/FileProcessor';
+import PowerShellManager from '../pages/PowerShellManager';
 
 // Central registry of all pages
 const pageRegistry = [
@@ -6,7 +7,11 @@ const pageRegistry = [
     path: '/',
     name: 'File Processor',
     component: FileProcessor,
-    icon: '📁'
+  },
+  {
+    path: '/powershell',
+    name: 'PowerShell Manager',
+    component: PowerShellManager,
   },
   // Add more pages here as you create them
   // Example:
@@ -14,7 +19,6 @@ const pageRegistry = [
   //   path: '/settings',
   //   name: 'Settings',
   //   component: Settings,
-  //   icon: '⚙️'
   // }
 ];
 
