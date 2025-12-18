@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Path $BackupDir | Out-Null
 
 Write-Host "Starting backup of user data to $BackupDir..." -ForegroundColor Cyan
 
-# Copy the user_data content
+# Copy the user_data content (including workspaces)
 Copy-Item -Path "$UserDataDir\*" -Destination $BackupDir -Recurse -Force
 
 Write-Host "Backup completed successfully!" -ForegroundColor Green

@@ -14,6 +14,7 @@ const HotkeyManager = () => {
 
   const [backendStatus, setBackendStatus] = useState('disconnected');
   const [runningScripts, setRunningScripts] = useState(new Set());
+  const [currentWorkspace, setCurrentWorkspace] = useState('WebApi Server');
   const wsRef = useRef(null);
 
   const connectToBackend = () => {
@@ -116,7 +117,17 @@ const HotkeyManager = () => {
         if (data.content && data.content['hotkey-scripts']) {
           console.log('Loaded hotkey scripts from disk');
           setScripts(data.content['hotkey-scripts']);
+        } else {
+          setScripts({}); // Clear if no scripts in this workspace
         }
+        if (data.workspace) {
+          setCurrentWorkspace(data.workspace);
+        }
+        break;
+
+      case 'workspace_switched':
+        setCurrentWorkspace(data.workspace);
+        setOutput(prev => prev + `[SYSTEM] Switched to workspace: ${data.workspace}\n`);
         break;
 
       case 'ahk_stop':
@@ -307,7 +318,12 @@ const HotkeyManager = () => {
   const renderScriptList = () => (
     <div className="script-list-view">
       <div className="view-header">
-        <h2>AutoHotkey Scripts</h2>
+        <div className="header-title-group">
+          <h2>AutoHotkey Scripts</h2>
+          <div className="workspace-badge">
+            Workspace: <span>{currentWorkspace}</span>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button 
             className="btn btn-secondary toggle-view-btn"

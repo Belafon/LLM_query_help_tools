@@ -16,11 +16,38 @@ const PORT = process.env.PORT || 3001;
 
 // Ensure user_data directory exists
 const USER_DATA_DIR = path.join(__dirname, '..', 'user_data');
-if (!fs.existsSync(USER_DATA_DIR)) {
-  fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+const WORKSPACES_DIR = path.join(USER_DATA_DIR, 'workspaces');
+const SETTINGS_FILE = path.join(USER_DATA_DIR, 'settings.json');
+
+if (!fs.existsSync(WORKSPACES_DIR)) {
+  fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 }
 
-const SCRIPTS_FILE = path.join(USER_DATA_DIR, 'scripts.json');
+// Default workspace setup
+const DEFAULT_WS_NAME = 'WebApi Server';
+const DEFAULT_WS_DIR = path.join(WORKSPACES_DIR, DEFAULT_WS_NAME);
+if (!fs.existsSync(DEFAULT_WS_DIR)) {
+  fs.mkdirSync(DEFAULT_WS_DIR, { recursive: true });
+}
+
+// Load settings or set defaults
+let settings = { currentWorkspace: DEFAULT_WS_NAME };
+if (fs.existsSync(SETTINGS_FILE)) {
+  try {
+    let content = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    // Strip BOM if it exists
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
+    settings = JSON.parse(content);
+  } catch (e) {
+    console.error('Error loading settings:', e);
+  }
+}
+
+function getScriptsFilePath(workspaceName) {
+  return path.join(WORKSPACES_DIR, workspaceName || settings.currentWorkspace, 'scripts.json');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -144,6 +171,46 @@ function findAutoHotkeyExecutable() {
   return null;
 }
 
+/**
+ * Replaces path aliases in the form of {{ALIAS}} with their actual paths
+ * defined in the current workspace.
+ */
+function replacePathAliases(scriptContent) {
+  try {
+    const scriptsFile = getScriptsFilePath();
+    if (!fs.existsSync(scriptsFile)) return scriptContent;
+
+    const allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
+    const paths = allData.paths || [];
+
+    let processedContent = scriptContent;
+    
+    // Handle paths if it's an array (new format)
+    if (Array.isArray(paths)) {
+      paths.forEach(p => {
+        if (p.alias && p.path) {
+          const escapedAlias = p.alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`{{${escapedAlias}}}`, 'g');
+          processedContent = processedContent.replace(regex, p.path);
+        }
+      });
+    } 
+    // Handle paths if it's an object (legacy/alternative format)
+    else if (typeof paths === 'object') {
+      for (const [alias, actualPath] of Object.entries(paths)) {
+        const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`{{${escapedAlias}}}`, 'g');
+        processedContent = processedContent.replace(regex, actualPath);
+      }
+    }
+
+    return processedContent;
+  } catch (error) {
+    console.error('Error replacing path aliases:', error);
+    return scriptContent;
+  }
+}
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
@@ -177,6 +244,18 @@ wss.on('connection', (ws) => {
         case 'load_data':
           handleLoadData(ws);
           break;
+        case 'list_workspaces':
+          handleListWorkspaces(ws);
+          break;
+        case 'create_workspace':
+          handleCreateWorkspace(ws, data);
+          break;
+        case 'switch_workspace':
+          handleSwitchWorkspace(ws, data);
+          break;
+        case 'delete_workspace':
+          handleDeleteWorkspace(ws, data);
+          break;
         default:
           ws.send(JSON.stringify({
             type: 'error',
@@ -202,6 +281,9 @@ async function handleScriptExecution(ws, data) {
   const { script, scriptName } = data;
 
   try {
+    // Replace path aliases before execution
+    const processedScript = replacePathAliases(script);
+
     // Send execution start message
     ws.send(JSON.stringify({
       type: 'execution_start',
@@ -228,7 +310,7 @@ Write-Host ""
 
 try {
     # User script starts here
-${script}
+${processedScript}
     # User script ends here
     
     Write-Host ""
@@ -335,6 +417,9 @@ async function handleAHKRun(ws, data) {
   const { scriptId, script, scriptName } = data;
 
   try {
+    // Replace path aliases before execution
+    const processedScript = replacePathAliases(script);
+
     // Check if script is already running
     if (runningAHKScripts.has(scriptId)) {
       ws.send(JSON.stringify({
@@ -361,7 +446,7 @@ async function handleAHKRun(ws, data) {
     const scriptPath = path.join(tempDir, scriptFileName);
 
     // Write script to file
-    fs.writeFileSync(scriptPath, script, 'utf8');
+    fs.writeFileSync(scriptPath, processedScript, 'utf8');
     console.log('Created AutoHotkey script:', scriptPath);
 
     // Launch AutoHotkey script
@@ -467,15 +552,16 @@ function handleAHKStatus(ws) {
 function handleSaveData(ws, data) {
   const { dataType, content } = data;
   try {
+    const scriptsFile = getScriptsFilePath();
     let allData = {};
-    if (fs.existsSync(SCRIPTS_FILE)) {
-      allData = JSON.parse(fs.readFileSync(SCRIPTS_FILE, 'utf8'));
+    if (fs.existsSync(scriptsFile)) {
+      allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
     }
     
     allData[dataType] = content;
-    fs.writeFileSync(SCRIPTS_FILE, JSON.stringify(allData, null, 2), 'utf8');
+    fs.writeFileSync(scriptsFile, JSON.stringify(allData, null, 2), 'utf8');
     
-    console.log(`Saved ${dataType} to disk`);
+    console.log(`Saved ${dataType} to workspace "${settings.currentWorkspace}"`);
     ws.send(JSON.stringify({
       type: 'save_success',
       dataType,
@@ -492,17 +578,20 @@ function handleSaveData(ws, data) {
 
 function handleLoadData(ws) {
   try {
-    if (fs.existsSync(SCRIPTS_FILE)) {
-      const allData = JSON.parse(fs.readFileSync(SCRIPTS_FILE, 'utf8'));
+    const scriptsFile = getScriptsFilePath();
+    if (fs.existsSync(scriptsFile)) {
+      const allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
       ws.send(JSON.stringify({
         type: 'load_data',
-        content: allData
+        content: allData,
+        workspace: settings.currentWorkspace
       }));
-      console.log('Sent all data to client');
+      console.log(`Sent data for workspace "${settings.currentWorkspace}" to client`);
     } else {
       ws.send(JSON.stringify({
         type: 'load_data',
-        content: {}
+        content: {},
+        workspace: settings.currentWorkspace
       }));
     }
   } catch (error) {
@@ -511,6 +600,85 @@ function handleLoadData(ws) {
       type: 'error',
       message: `Failed to load data: ${error.message}`
     }));
+  }
+}
+
+function handleListWorkspaces(ws) {
+  try {
+    const workspaces = fs.readdirSync(WORKSPACES_DIR)
+      .filter(file => fs.statSync(path.join(WORKSPACES_DIR, file)).isDirectory());
+    
+    ws.send(JSON.stringify({
+      type: 'workspace_list',
+      workspaces,
+      current: settings.currentWorkspace
+    }));
+  } catch (error) {
+    console.error('Error listing workspaces:', error);
+  }
+}
+
+function handleCreateWorkspace(ws, data) {
+  const { name } = data;
+  if (!name) return;
+  
+  try {
+    const wsDir = path.join(WORKSPACES_DIR, name);
+    if (!fs.existsSync(wsDir)) {
+      fs.mkdirSync(wsDir, { recursive: true });
+      console.log(`Created workspace: ${name}`);
+      handleListWorkspaces(ws);
+    } else {
+      ws.send(JSON.stringify({ type: 'error', message: 'Workspace already exists' }));
+    }
+  } catch (error) {
+    console.error('Error creating workspace:', error);
+  }
+}
+
+function handleSwitchWorkspace(ws, data) {
+  const { name } = data;
+  if (!name) return;
+  
+  try {
+    const wsDir = path.join(WORKSPACES_DIR, name);
+    if (fs.existsSync(wsDir)) {
+      settings.currentWorkspace = name;
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+      console.log(`Switched to workspace: ${name}`);
+      
+      // Notify client and send new data
+      ws.send(JSON.stringify({
+        type: 'workspace_switched',
+        workspace: name
+      }));
+      handleLoadData(ws);
+    }
+  } catch (error) {
+    console.error('Error switching workspace:', error);
+  }
+}
+
+function handleDeleteWorkspace(ws, data) {
+  const { name } = data;
+  if (!name || name === DEFAULT_WS_NAME) return;
+  
+  try {
+    const wsDir = path.join(WORKSPACES_DIR, name);
+    if (fs.existsSync(wsDir)) {
+      // Simple recursive delete
+      fs.rmSync(wsDir, { recursive: true, force: true });
+      console.log(`Deleted workspace: ${name}`);
+      
+      if (settings.currentWorkspace === name) {
+        settings.currentWorkspace = DEFAULT_WS_NAME;
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+      }
+      
+      handleListWorkspaces(ws);
+    }
+  } catch (error) {
+    console.error('Error deleting workspace:', error);
   }
 }
 

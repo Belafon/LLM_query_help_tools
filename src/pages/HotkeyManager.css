@@ -27,6 +27,25 @@
   font-size: 28px;
 }
 
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.workspace-badge {
+  background: #333;
+  padding: 4px 12px;
+  border-radius: 15px;
+  font-size: 0.9rem;
+  border: 1px solid #444;
+}
+
+.workspace-badge span {
+  color: #007acc;
+  font-weight: bold;
+}
+
 .header-actions {
   display: flex;
   gap: 10px;

@@ -1,16 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Sidebar.css';
 
 const Sidebar = ({ pages }) => {
   const location = useLocation();
   const [isCompact, setIsCompact] = useState(true);
+  const [currentWorkspace, setCurrentWorkspace] = useState('WebApi Server');
+  const wsRef = useRef(null);
+
+  const connectToBackend = () => {
+    try {
+      const ws = new WebSocket('ws://localhost:3001');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'load_data' }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'load_data' && data.workspace) {
+          setCurrentWorkspace(data.workspace);
+        } else if (data.type === 'workspace_switched') {
+          setCurrentWorkspace(data.workspace);
+        }
+      };
+
+      ws.onclose = () => {
+        setTimeout(connectToBackend, 3000);
+      };
+    } catch (error) {
+      console.error('Sidebar WS error:', error);
+    }
+  };
+
+  useEffect(() => {
+    connectToBackend();
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
 
   // Icon mapping for each page
   const getPageIcon = (pageName) => {
     const iconMap = {
       'File Processor': '📄',
       'PowerShell Manager': '⚡',
+      'Hotkey Manager': '⌨️',
+      'Workspaces': '📁',
+      'Path Manager': '🔗',
       'Settings': '⚙️',
       // Add more icons as you add more pages
     };
@@ -53,6 +91,12 @@ const Sidebar = ({ pages }) => {
           ))}
         </ul>
       </nav>
+      <div className="sidebar-footer">
+        {!isCompact && <span className="workspace-label">Workspace:</span>}
+        <span className="workspace-name" title={`Current Workspace: ${currentWorkspace}`}>
+          {isCompact ? currentWorkspace.charAt(0) : currentWorkspace}
+        </span>
+      </div>
     </div>
   );
 };

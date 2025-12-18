@@ -99,6 +99,49 @@
   border-left-color: #58a6ff;
 }
 
+.sidebar-footer {
+  padding: 15px;
+  border-top: 1px solid #333;
+  background: #161b22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.sidebar-compact .sidebar-footer {
+  padding: 10px 5px;
+}
+
+.workspace-label {
+  font-size: 0.7rem;
+  color: #8b949e;
+  text-transform: uppercase;
+}
+
+.workspace-name {
+  font-size: 0.9rem;
+  color: #58a6ff;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+}
+
+.sidebar-compact .workspace-name {
+  background: #58a6ff;
+  color: #0d1117;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+}
+
 .page-link.active {
   background-color: #0969da;
   color: #f0f6fc;

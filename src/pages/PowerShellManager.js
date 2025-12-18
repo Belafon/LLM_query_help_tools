@@ -15,6 +15,7 @@ const PowerShellManager = () => {
 
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [backendStatus, setBackendStatus] = useState('disconnected');
+  const [currentWorkspace, setCurrentWorkspace] = useState('WebApi Server');
   const wsRef = useRef(null);
 
   const connectToBackend = () => {
@@ -120,7 +121,17 @@ const PowerShellManager = () => {
         if (data.content && data.content['powershell-scripts']) {
           console.log('Loaded powershell scripts from disk');
           setScripts(data.content['powershell-scripts']);
+        } else {
+          setScripts({}); // Clear if no scripts in this workspace
         }
+        if (data.workspace) {
+          setCurrentWorkspace(data.workspace);
+        }
+        break;
+      
+      case 'workspace_switched':
+        setCurrentWorkspace(data.workspace);
+        setOutput(prev => prev + `[SYSTEM] Switched to workspace: ${data.workspace}\n`);
         break;
       
       case 'error':
@@ -256,7 +267,12 @@ const PowerShellManager = () => {
   const renderScriptList = () => (
     <div className="script-list-view">
       <div className="view-header">
-        <h2>PowerShell Scripts</h2>
+        <div className="header-title-group">
+          <h2>PowerShell Scripts</h2>
+          <div className="workspace-badge">
+            Workspace: <span>{currentWorkspace}</span>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button 
             className="btn btn-secondary toggle-view-btn"
