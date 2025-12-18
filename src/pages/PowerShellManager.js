@@ -15,7 +15,8 @@ const PowerShellManager = () => {
 
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [backendStatus, setBackendStatus] = useState('disconnected');
-  const [currentWorkspace, setCurrentWorkspace] = useState('WebApi Server');
+  const [currentWorkspace, setCurrentWorkspace] = useState('Default');
+  const [workspaces, setWorkspaces] = useState([]);
   const wsRef = useRef(null);
 
   const connectToBackend = () => {
@@ -28,6 +29,7 @@ const PowerShellManager = () => {
         setBackendStatus('connected');
         // Request data from disk
         ws.send(JSON.stringify({ type: 'load_data' }));
+        ws.send(JSON.stringify({ type: 'list_workspaces' }));
       };
 
       ws.onmessage = (event) => {
@@ -129,9 +131,20 @@ const PowerShellManager = () => {
         }
         break;
       
+      case 'workspace_list':
+        setWorkspaces(data.workspaces || []);
+        if (data.current) {
+          setCurrentWorkspace(data.current);
+        }
+        break;
+      
       case 'workspace_switched':
         setCurrentWorkspace(data.workspace);
         setOutput(prev => prev + `[SYSTEM] Switched to workspace: ${data.workspace}\n`);
+        // Reload data for the new workspace
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'load_data' }));
+        }
         break;
       
       case 'error':
@@ -262,6 +275,16 @@ const PowerShellManager = () => {
     }
   };
 
+  const handleSwitchWorkspace = (e) => {
+    const workspaceName = e.target.value;
+    if (workspaceName && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'switch_workspace',
+        name: workspaceName
+      }));
+    }
+  };
+
 
 
   const renderScriptList = () => (
@@ -270,7 +293,16 @@ const PowerShellManager = () => {
         <div className="header-title-group">
           <h2>PowerShell Scripts</h2>
           <div className="workspace-badge">
-            Workspace: <span>{currentWorkspace}</span>
+            Workspace: 
+            <select 
+              className="workspace-select" 
+              value={currentWorkspace} 
+              onChange={handleSwitchWorkspace}
+            >
+              {workspaces.map(ws => (
+                <option key={ws} value={ws}>{ws}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

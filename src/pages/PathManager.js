@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './PathManager.css';
 
 const PathManager = () => {
@@ -6,58 +6,90 @@ const PathManager = () => {
   const [newAlias, setNewAlias] = useState('');
   const [newPath, setNewPath] = useState('');
   const [currentWorkspace, setCurrentWorkspace] = useState('Default');
+  const [workspaces, setWorkspaces] = useState([]);
   const [status, setStatus] = useState({ type: '', message: '' });
+  const [backendStatus, setBackendStatus] = useState('disconnected');
+  const [editingAlias, setEditingAlias] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const wsRef = useRef(null);
 
   const showStatus = (type, message) => {
     setStatus({ type, message });
     setTimeout(() => setStatus({ type: '', message: '' }), 3000);
   };
 
-  const loadData = useCallback(async () => {
+  const connectToBackend = useCallback(() => {
     try {
-      const response = await fetch('http://localhost:3001/api/load-data');
-      const data = await response.json();
-      
-      if (data.success) {
-        setPaths(data.data.paths || []);
-        setCurrentWorkspace(data.workspace || 'Default');
-      }
+      const ws = new WebSocket('ws://localhost:3001');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Connected to Path Manager backend');
+        setBackendStatus('connected');
+        ws.send(JSON.stringify({ type: 'load_data' }));
+        ws.send(JSON.stringify({ type: 'list_workspaces' }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'load_data') {
+          setPaths(data.content.paths || []);
+          setCurrentWorkspace(data.workspace || 'Default');
+        } else if (data.type === 'workspace_list') {
+          setWorkspaces(data.workspaces || []);
+          if (data.current) {
+            setCurrentWorkspace(data.current);
+          }
+        } else if (data.type === 'workspace_switched') {
+          setCurrentWorkspace(data.workspace);
+          // Reload data for the new workspace
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'load_data' }));
+          }
+        } else if (data.type === 'global_paths') {
+          setPaths(data.paths || []);
+        } else if (data.type === 'alias_renamed') {
+          showStatus('success', data.message);
+          setEditingAlias(null);
+        } else if (data.type === 'save_success' && data.dataType === 'paths') {
+          showStatus('success', 'Paths saved successfully');
+        } else if (data.type === 'error') {
+          showStatus('error', data.message);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('Disconnected from Path Manager backend');
+        setBackendStatus('disconnected');
+        setTimeout(connectToBackend, 3000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setBackendStatus('error');
+      };
     } catch (error) {
-      console.error('Error loading paths:', error);
-      showStatus('error', 'Failed to load paths');
+      console.error('Failed to connect to backend:', error);
+      setBackendStatus('error');
     }
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    connectToBackend();
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, [connectToBackend]);
 
-  const saveData = async (updatedPaths) => {
-    try {
-      // First get current data to preserve scripts
-      const response = await fetch('http://localhost:3001/api/load-data');
-      const currentData = await response.json();
-      
-      const payload = {
-        ...currentData.data,
-        paths: updatedPaths
-      };
-
-      const saveResponse = await fetch('http://localhost:3001/api/save-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await saveResponse.json();
-      if (result.success) {
-        showStatus('success', 'Paths saved successfully');
-      } else {
-        showStatus('error', result.message || 'Failed to save paths');
-      }
-    } catch (error) {
-      console.error('Error saving paths:', error);
-      showStatus('error', 'Failed to save paths');
+  const saveData = (updatedPaths) => {
+    if (backendStatus === 'connected' && wsRef.current) {
+      wsRef.current.send(JSON.stringify({
+        type: 'save_data',
+        dataType: 'paths',
+        content: updatedPaths
+      }));
+    } else {
+      showStatus('error', 'Not connected to backend');
     }
   };
 
@@ -68,7 +100,6 @@ const PathManager = () => {
       return;
     }
 
-    // Clean alias (remove {{ }} if user added them)
     const cleanAlias = newAlias.replace(/[{}]/g, '').toUpperCase();
     
     if (paths.some(p => p.alias === cleanAlias)) {
@@ -89,11 +120,71 @@ const PathManager = () => {
     saveData(updatedPaths);
   };
 
+  const handleStartRename = (alias) => {
+    setEditingAlias(alias);
+    setEditValue(alias);
+  };
+
+  const handleCancelRename = () => {
+    setEditingAlias(null);
+    setEditValue('');
+  };
+
+  const handleConfirmRename = (oldAlias) => {
+    const cleanNewAlias = editValue.replace(/[{}]/g, '').toUpperCase();
+    
+    if (!cleanNewAlias) {
+      showStatus('error', 'Alias name cannot be empty');
+      return;
+    }
+
+    if (cleanNewAlias === oldAlias) {
+      setEditingAlias(null);
+      return;
+    }
+
+    if (paths.some(p => p.alias === cleanNewAlias)) {
+      showStatus('error', 'Alias already exists');
+      return;
+    }
+
+    if (backendStatus === 'connected' && wsRef.current) {
+      wsRef.current.send(JSON.stringify({
+        type: 'rename_path_alias',
+        oldAlias,
+        newAlias: cleanNewAlias
+      }));
+    } else {
+      showStatus('error', 'Not connected to backend');
+    }
+  };
+
+  const handleSwitchWorkspace = (e) => {
+    const workspaceName = e.target.value;
+    if (workspaceName && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'switch_workspace',
+        name: workspaceName
+      }));
+    }
+  };
+
   return (
     <div className="path-manager-container">
       <div className="path-manager-header">
         <h1>Path Manager</h1>
-        <div className="workspace-badge">Workspace: {currentWorkspace}</div>
+        <div className="workspace-badge">
+          Workspace: 
+          <select 
+            className="workspace-select" 
+            value={currentWorkspace} 
+            onChange={handleSwitchWorkspace}
+          >
+            {workspaces.map(ws => (
+              <option key={ws} value={ws}>{ws}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {status.message && (
@@ -146,16 +237,53 @@ const PathManager = () => {
             <tbody>
               {paths.map((p) => (
                 <tr key={p.alias}>
-                  <td className="alias-cell">{p.alias}</td>
-                  <td className="usage-cell"><code>{"{{"}{p.alias}{"}}"}</code></td>
-                  <td className="path-cell">{p.path}</td>
-                  <td>
-                    <button 
-                      className="delete-btn"
-                      onClick={() => handleDeletePath(p.alias)}
-                    >
-                      Delete
-                    </button>
+                  <td className="alias-cell" data-label="Alias">
+                    {editingAlias === p.alias ? (
+                      <input
+                        type="text"
+                        className="edit-alias-input"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        autoFocus
+                      />
+                    ) : (
+                      p.alias
+                    )}
+                  </td>
+                  <td className="usage-cell" data-label="Usage"><code>{"{{"}{p.alias}{"}}"}</code></td>
+                  <td className="path-cell" data-label="Target Path">{p.path}</td>
+                  <td className="actions-cell" data-label="Actions">
+                    {editingAlias === p.alias ? (
+                      <>
+                        <button 
+                          className="save-btn"
+                          onClick={() => handleConfirmRename(p.alias)}
+                        >
+                          Save
+                        </button>
+                        <button 
+                          className="cancel-btn"
+                          onClick={handleCancelRename}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button 
+                          className="edit-btn"
+                          onClick={() => handleStartRename(p.alias)}
+                        >
+                          Rename
+                        </button>
+                        <button 
+                          className="delete-btn"
+                          onClick={() => handleDeletePath(p.alias)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

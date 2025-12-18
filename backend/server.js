@@ -25,7 +25,7 @@ if (!fs.existsSync(WORKSPACES_DIR)) {
 }
 
 // Default workspace setup
-const DEFAULT_WS_NAME = 'WebApi Server';
+const DEFAULT_WS_NAME = 'Default';
 const DEFAULT_WS_DIR = path.join(WORKSPACES_DIR, DEFAULT_WS_NAME);
 if (!fs.existsSync(DEFAULT_WS_DIR)) {
   fs.mkdirSync(DEFAULT_WS_DIR, { recursive: true });
@@ -220,6 +220,111 @@ function replacePathAliases(scriptContent) {
   }
 }
 
+/**
+ * Renames a path alias globally and updates all scripts in all workspaces.
+ */
+async function handleRenamePathAlias(ws, data) {
+  const { oldAlias, newAlias } = data;
+  
+  if (!oldAlias || !newAlias) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Missing oldAlias or newAlias' }));
+    return;
+  }
+
+  try {
+    // 1. Update global_paths.json
+    let globalPaths = getGlobalPaths();
+    let aliasFound = false;
+
+    if (Array.isArray(globalPaths)) {
+      globalPaths = globalPaths.map(p => {
+        if (p.alias === oldAlias) {
+          aliasFound = true;
+          return { ...p, alias: newAlias };
+        }
+        return p;
+      });
+    }
+
+    if (!aliasFound) {
+      ws.send(JSON.stringify({ type: 'error', message: `Alias "${oldAlias}" not found in global paths` }));
+      return;
+    }
+
+    fs.writeFileSync(GLOBAL_PATHS_FILE, JSON.stringify(globalPaths, null, 2));
+
+    // 2. Update all scripts in all workspaces
+    if (fs.existsSync(WORKSPACES_DIR)) {
+      const workspaces = fs.readdirSync(WORKSPACES_DIR);
+      
+      for (const workspaceName of workspaces) {
+        const scriptsPath = path.join(WORKSPACES_DIR, workspaceName, 'scripts.json');
+        
+        if (fs.existsSync(scriptsPath)) {
+          try {
+            const scriptsData = JSON.parse(fs.readFileSync(scriptsPath, 'utf8'));
+            let scriptsChanged = false;
+
+            // Helper to replace alias in script content
+            const updateContent = (content) => {
+              if (!content) return content;
+              const escapedOldAlias = oldAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`{{${escapedOldAlias}}}`, 'g');
+              const newContent = content.replace(regex, `{{${newAlias}}}`);
+              if (newContent !== content) {
+                scriptsChanged = true;
+              }
+              return newContent;
+            };
+
+            // Update PowerShell scripts
+            if (scriptsData.powershell && Array.isArray(scriptsData.powershell)) {
+              scriptsData.powershell = scriptsData.powershell.map(s => ({
+                ...s,
+                content: updateContent(s.content)
+              }));
+            }
+
+            // Update AHK scripts
+            if (scriptsData.ahk && Array.isArray(scriptsData.ahk)) {
+              scriptsData.ahk = scriptsData.ahk.map(s => ({
+                ...s,
+                content: updateContent(s.content)
+              }));
+            }
+
+            if (scriptsChanged) {
+              fs.writeFileSync(scriptsPath, JSON.stringify(scriptsData, null, 2));
+              console.log(`Updated scripts in workspace: ${workspaceName}`);
+            }
+          } catch (err) {
+            console.error(`Error updating scripts in workspace ${workspaceName}:`, err);
+          }
+        }
+      }
+    }
+
+    ws.send(JSON.stringify({ 
+      type: 'alias_renamed', 
+      oldAlias, 
+      newAlias,
+      message: `Successfully renamed alias "${oldAlias}" to "${newAlias}" and updated all scripts.`
+    }));
+
+    // Also broadcast the updated global paths to all clients
+    const updatedPaths = getGlobalPaths();
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'global_paths', paths: updatedPaths }));
+      }
+    });
+
+  } catch (error) {
+    console.error('Error renaming path alias:', error);
+    ws.send(JSON.stringify({ type: 'error', message: 'Failed to rename alias' }));
+  }
+}
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
@@ -264,6 +369,9 @@ wss.on('connection', (ws) => {
           break;
         case 'delete_workspace':
           handleDeleteWorkspace(ws, data);
+          break;
+        case 'rename_path_alias':
+          handleRenamePathAlias(ws, data);
           break;
         default:
           ws.send(JSON.stringify({

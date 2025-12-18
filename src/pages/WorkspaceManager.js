@@ -64,8 +64,8 @@ const WorkspaceManager = () => {
   };
 
   const handleDeleteWorkspace = (name) => {
-    if (name === 'WebApi Server') {
-      alert('Cannot delete the WebApi Server workspace');
+    if (name === 'Default') {
+      alert('Cannot delete the Default workspace');
       return;
     }
     if (window.confirm(`Are you sure you want to delete workspace "${name}"?`)) {
@@ -117,7 +117,7 @@ const WorkspaceManager = () => {
                     Switch
                   </button>
                 )}
-                {ws !== 'WebApi Server' && (
+                {ws !== 'Default' && (
                   <button 
                     className="btn btn-danger"
                     onClick={() => handleDeleteWorkspace(ws)}

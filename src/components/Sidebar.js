@@ -5,7 +5,7 @@ import './Sidebar.css';
 const Sidebar = ({ pages }) => {
   const location = useLocation();
   const [isCompact, setIsCompact] = useState(true);
-  const [currentWorkspace, setCurrentWorkspace] = useState('WebApi Server');
+  const [currentWorkspace, setCurrentWorkspace] = useState('Default');
   const wsRef = useRef(null);
 
   const connectToBackend = () => {

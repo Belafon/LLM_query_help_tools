@@ -39,10 +39,30 @@
   border-radius: 15px;
   font-size: 0.9rem;
   border: 1px solid #444;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+}
+
+.workspace-select {
+  background: transparent;
+  border: none;
+  color: #4fc1ff;
+  font-weight: bold;
+  font-size: 0.9rem;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+}
+
+.workspace-select option {
+  background-color: #252526;
+  color: #e0e0e0;
 }
 
 .workspace-badge span {
-  color: #007acc;
+  color: #4fc1ff;
   font-weight: bold;
 }
 
@@ -518,7 +538,7 @@
 }
 
 /* Responsive Design */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .container {
     padding: 15px;
   }
