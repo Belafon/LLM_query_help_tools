@@ -24,6 +24,120 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PowerShell Backend Service is running' });
 });
 
+// Store running AutoHotkey processes
+const runningAHKScripts = new Map(); // scriptId -> { process, scriptPath }
+
+/**
+ * Check whether the given path points to an executable file or alias.
+ */
+function pathPointsToExecutable(filePath) {
+  if (!filePath) return false;
+  try {
+    const stats = fs.lstatSync(filePath);
+    return stats.isFile() || stats.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Try to find an AutoHotkey executable on the local machine.
+ * Checks common install directories, PATH entries, Microsoft Store locations,
+ * and an optional AUTOHOTKEY_PATH env override.
+ * @returns {string|null} Full path to the AutoHotkey executable or null if not found.
+ */
+function findAutoHotkeyExecutable() {
+  const candidateFileNames = [
+    'AutoHotkey.exe',
+    'AutoHotkey64.exe',
+    'AutoHotkey32.exe',
+    'AutoHotkeyU64.exe',
+    'AutoHotkeyU32.exe',
+    'AutoHotkeyUX.exe',
+    'AutoHotkeyV2.exe',
+    'AutoHotkeyV1.exe'
+  ];
+
+  const directoriesToCheck = new Set();
+
+  const addDirectory = (dirPath) => {
+    if (dirPath && typeof dirPath === 'string' && dirPath.trim()) {
+      directoriesToCheck.add(dirPath.trim());
+    }
+  };
+
+  // Allow explicit override for custom installs or portable versions
+  const configuredPath = (process.env.AUTOHOTKEY_PATH || '').trim();
+  if (configuredPath) {
+    const normalized = configuredPath.replace(/^"(.*)"$/, '$1');
+    if (pathPointsToExecutable(normalized)) {
+      return normalized;
+    }
+    addDirectory(normalized);
+  }
+
+  const baseInstallRoots = [
+    process.env.ProgramFiles || 'C:\\Program Files',
+    process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : null
+  ].filter(Boolean);
+
+  const autoHotkeySubDirs = [
+    '',
+    'AutoHotkey',
+    path.join('AutoHotkey', 'v2'),
+    path.join('AutoHotkey', 'v1'),
+    path.join('AutoHotkey', 'UX')
+  ];
+
+  for (const root of baseInstallRoots) {
+    for (const subDir of autoHotkeySubDirs) {
+      addDirectory(subDir ? path.join(root, subDir) : root);
+    }
+  }
+
+  if (process.env.LOCALAPPDATA) {
+    addDirectory(path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps'));
+
+    const packagesDir = path.join(process.env.LOCALAPPDATA, 'Packages');
+    try {
+      const packages = fs.readdirSync(packagesDir, { withFileTypes: true });
+      for (const pkg of packages) {
+        if (!pkg.isDirectory()) continue;
+        if (!pkg.name.toLowerCase().includes('autohotkey')) continue;
+
+        const pkgRoot = path.join(packagesDir, pkg.name, 'LocalCache', 'Local', 'Microsoft', 'WritablePackageRoot', 'VFS');
+        addDirectory(path.join(pkgRoot, 'ProgramFilesX64', 'AutoHotkey'));
+        addDirectory(path.join(pkgRoot, 'ProgramFilesX64', 'AutoHotkey', 'v2'));
+        addDirectory(path.join(pkgRoot, 'ProgramFilesX64', 'AutoHotkey', 'v1'));
+        addDirectory(path.join(pkgRoot, 'ProgramFiles', 'AutoHotkey'));
+        addDirectory(path.join(pkgRoot, 'ProgramFiles', 'AutoHotkey', 'v2'));
+        addDirectory(path.join(pkgRoot, 'ProgramFiles', 'AutoHotkey', 'v1'));
+      }
+    } catch {
+      // Packages directory may be inaccessible in some environments
+    }
+  }
+
+  if (process.env.PATH) {
+    for (const pathEntry of process.env.PATH.split(path.delimiter)) {
+      addDirectory(pathEntry);
+    }
+  }
+
+  for (const dir of directoriesToCheck) {
+    if (!dir) continue;
+    for (const fileName of candidateFileNames) {
+      const candidatePath = path.join(dir, fileName);
+      if (pathPointsToExecutable(candidatePath)) {
+        return candidatePath;
+      }
+    }
+  }
+
+  return null;
+}
+
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
@@ -35,6 +149,21 @@ wss.on('connection', (ws) => {
       switch (data.type) {
         case 'execute':
           await handleScriptExecution(ws, data);
+          break;
+        case 'ahk_run':
+          await handleAHKRun(ws, data);
+          break;
+        case 'ahk_stop':
+          await handleAHKStop(ws, data);
+          break;
+        case 'ahk_status':
+          handleAHKStatus(ws);
+          break;
+        case 'ahk_register_autostart':
+          // Future: handle auto-start registration
+          break;
+        case 'ahk_unregister_autostart':
+          // Future: handle auto-start unregistration
           break;
         default:
           ws.send(JSON.stringify({
@@ -189,13 +318,156 @@ pause
   }
 }
 
+// AutoHotkey script handlers
+async function handleAHKRun(ws, data) {
+  const { scriptId, script, scriptName } = data;
 
+  try {
+    // Check if script is already running
+    if (runningAHKScripts.has(scriptId)) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: `Script "${scriptName}" is already running. Stop it first.`
+      }));
+      return;
+    }
+
+    // Find AutoHotkey executable
+    const ahkPath = findAutoHotkeyExecutable();
+
+    if (!ahkPath) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'AutoHotkey executable not found. Install AutoHotkey or set AUTOHOTKEY_PATH to the executable.'
+      }));
+      return;
+    }
+
+    // Create temporary script file
+    const tempDir = os.tmpdir();
+    const scriptFileName = `ahk_script_${scriptId}.ahk`;
+    const scriptPath = path.join(tempDir, scriptFileName);
+
+    // Write script to file
+    fs.writeFileSync(scriptPath, script, 'utf8');
+    console.log('Created AutoHotkey script:', scriptPath);
+
+    // Launch AutoHotkey script
+    const ahkProcess = spawn(ahkPath, [scriptPath], {
+      detached: false,
+      stdio: 'ignore'
+    });
+
+    // Store the running process
+    runningAHKScripts.set(scriptId, {
+      process: ahkProcess,
+      scriptPath: scriptPath
+    });
+
+    ahkProcess.on('exit', (code) => {
+      console.log(`AutoHotkey script ${scriptName} exited with code ${code}`);
+      runningAHKScripts.delete(scriptId);
+      
+      // Clean up script file
+      try {
+        if (fs.existsSync(scriptPath)) {
+          fs.unlinkSync(scriptPath);
+        }
+      } catch (error) {
+        console.log('Could not clean up script file:', error.message);
+      }
+
+      // Notify client
+      ws.send(JSON.stringify({
+        type: 'ahk_stop',
+        scriptId: scriptId,
+        message: `Script "${scriptName}" has stopped.`
+      }));
+    });
+
+    ws.send(JSON.stringify({
+      type: 'ahk_start',
+      scriptId: scriptId,
+      message: `Script "${scriptName}" started successfully.`
+    }));
+
+  } catch (error) {
+    console.error('Error running AutoHotkey script:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to run script: ${error.message}`
+    }));
+  }
+}
+
+async function handleAHKStop(ws, data) {
+  const { scriptId, scriptName } = data;
+
+  try {
+    const scriptInfo = runningAHKScripts.get(scriptId);
+    
+    if (!scriptInfo) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: `Script "${scriptName}" is not running.`
+      }));
+      return;
+    }
+
+    // Kill the AutoHotkey process
+    scriptInfo.process.kill();
+    
+    // Clean up script file
+    try {
+      if (fs.existsSync(scriptInfo.scriptPath)) {
+        fs.unlinkSync(scriptInfo.scriptPath);
+      }
+    } catch (error) {
+      console.log('Could not clean up script file:', error.message);
+    }
+
+    runningAHKScripts.delete(scriptId);
+
+    ws.send(JSON.stringify({
+      type: 'ahk_stop',
+      scriptId: scriptId,
+      message: `Script "${scriptName}" stopped successfully.`
+    }));
+
+  } catch (error) {
+    console.error('Error stopping AutoHotkey script:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to stop script: ${error.message}`
+    }));
+  }
+}
+
+function handleAHKStatus(ws) {
+  const runningScriptIds = Array.from(runningAHKScripts.keys());
+  
+  ws.send(JSON.stringify({
+    type: 'ahk_status',
+    running: runningScriptIds
+  }));
+}
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
   
-  // No cleanup needed since scripts run in separate console windows
+  // Stop all running AutoHotkey scripts
+  for (const [scriptId, scriptInfo] of runningAHKScripts.entries()) {
+    try {
+      scriptInfo.process.kill();
+      if (fs.existsSync(scriptInfo.scriptPath)) {
+        fs.unlinkSync(scriptInfo.scriptPath);
+      }
+    } catch (error) {
+      console.log(`Could not stop script ${scriptId}:`, error.message);
+    }
+  }
+  runningAHKScripts.clear();
   
   server.close(() => {
     console.log('Server shut down');

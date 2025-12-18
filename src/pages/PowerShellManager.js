@@ -11,6 +11,7 @@ const PowerShellManager = () => {
   const [output, setOutput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [compactView, setCompactView] = useState(true);
 
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [backendStatus, setBackendStatus] = useState('disconnected');
@@ -238,12 +239,20 @@ const PowerShellManager = () => {
     <div className="script-list-view">
       <div className="view-header">
         <h2>PowerShell Scripts</h2>
-        <button 
-          className="btn btn-primary"
-          onClick={handleCreateNew}
-        >
-          Create New Script
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            className="btn btn-secondary toggle-view-btn"
+            onClick={() => setCompactView(!compactView)}
+          >
+            {compactView ? '☰ Expand' : '⚊ Compact'}
+          </button>
+          <button 
+            className="btn btn-primary"
+            onClick={handleCreateNew}
+          >
+            Create New Script
+          </button>
+        </div>
       </div>
       
       {Object.keys(scripts).length === 0 ? (
@@ -251,33 +260,69 @@ const PowerShellManager = () => {
           <p>No scripts found. Create your first PowerShell script!</p>
         </div>
       ) : (
-        <div className="scripts-grid">
+        <div className={compactView ? 'script-list-compact' : 'scripts-grid'}>
           {Object.entries(scripts).map(([scriptId, script]) => (
-            <div key={scriptId} className="script-card">
-              <div className="script-info">
+            <div key={scriptId} className={compactView ? 'script-card-compact' : 'script-card'}>
+              <div className={compactView ? 'script-info-compact' : 'script-info'}>
                 <h3>{script.name}</h3>
               </div>
-              <div className="script-actions">
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => handleExecuteFromList(scriptId)}
-                  disabled={isExecuting || backendStatus !== 'connected'}
-                >
-                  Execute
-                </button>
-                <button 
-                  className="btn btn-secondary"
-                  onClick={() => handleSelectScript(scriptId)}
-                >
-                  Open
-                </button>
-                <button 
-                  className="btn btn-danger"
-                  onClick={() => handleDeleteScript(scriptId)}
-                >
-                  Delete
-                </button>
-              </div>
+              {compactView ? (
+                <div className="script-actions-compact">
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-primary"
+                      onClick={() => handleExecuteFromList(scriptId)}
+                      disabled={isExecuting || backendStatus !== 'connected'}
+                      aria-label="Execute"
+                    >
+                      ▶
+                    </button>
+                    <span className="tooltip-text">Execute</span>
+                  </div>
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-secondary"
+                      onClick={() => handleSelectScript(scriptId)}
+                      aria-label="Open"
+                    >
+                      📄
+                    </button>
+                    <span className="tooltip-text">Open</span>
+                  </div>
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-danger"
+                      onClick={() => handleDeleteScript(scriptId)}
+                      aria-label="Delete"
+                    >
+                      🗑
+                    </button>
+                    <span className="tooltip-text">Delete</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="script-actions">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => handleExecuteFromList(scriptId)}
+                    disabled={isExecuting || backendStatus !== 'connected'}
+                  >
+                    Execute
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => handleSelectScript(scriptId)}
+                  >
+                    Open
+                  </button>
+                  <button 
+                    className="btn btn-danger"
+                    onClick={() => handleDeleteScript(scriptId)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
