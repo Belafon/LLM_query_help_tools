@@ -26,6 +26,8 @@ const HotkeyManager = () => {
         setBackendStatus('connected');
         // Request status of running AutoHotkey scripts
         ws.send(JSON.stringify({ type: 'ahk_status' }));
+        // Request data from disk
+        ws.send(JSON.stringify({ type: 'load_data' }));
       };
 
       ws.onmessage = (event) => {
@@ -89,8 +91,17 @@ const HotkeyManager = () => {
       console.log('Saving hotkey scripts to localStorage:', scripts);
       localStorage.setItem('hotkey-scripts', JSON.stringify(scripts));
       console.log('Scripts saved to localStorage');
+
+      // Also sync to disk via backend
+      if (backendStatus === 'connected' && wsRef.current) {
+        wsRef.current.send(JSON.stringify({
+          type: 'save_data',
+          dataType: 'hotkey-scripts',
+          content: scripts
+        }));
+      }
     }
-  }, [scripts, scriptsLoaded]);
+  }, [scripts, scriptsLoaded, backendStatus]);
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
@@ -100,7 +111,14 @@ const HotkeyManager = () => {
           setRunningScripts(prev => new Set([...prev, data.scriptId]));
         }
         break;
-      
+
+      case 'load_data':
+        if (data.content && data.content['hotkey-scripts']) {
+          console.log('Loaded hotkey scripts from disk');
+          setScripts(data.content['hotkey-scripts']);
+        }
+        break;
+
       case 'ahk_stop':
         setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] ${data.message}\n`);
         if (data.scriptId) {

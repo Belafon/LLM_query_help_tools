@@ -14,7 +14,13 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3001;
 
+// Ensure user_data directory exists
+const USER_DATA_DIR = path.join(__dirname, '..', 'user_data');
+if (!fs.existsSync(USER_DATA_DIR)) {
+  fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+}
 
+const SCRIPTS_FILE = path.join(USER_DATA_DIR, 'scripts.json');
 
 app.use(cors());
 app.use(express.json());
@@ -164,6 +170,12 @@ wss.on('connection', (ws) => {
           break;
         case 'ahk_unregister_autostart':
           // Future: handle auto-start unregistration
+          break;
+        case 'save_data':
+          handleSaveData(ws, data);
+          break;
+        case 'load_data':
+          handleLoadData(ws);
           break;
         default:
           ws.send(JSON.stringify({
@@ -450,6 +462,56 @@ function handleAHKStatus(ws) {
     type: 'ahk_status',
     running: runningScriptIds
   }));
+}
+
+function handleSaveData(ws, data) {
+  const { dataType, content } = data;
+  try {
+    let allData = {};
+    if (fs.existsSync(SCRIPTS_FILE)) {
+      allData = JSON.parse(fs.readFileSync(SCRIPTS_FILE, 'utf8'));
+    }
+    
+    allData[dataType] = content;
+    fs.writeFileSync(SCRIPTS_FILE, JSON.stringify(allData, null, 2), 'utf8');
+    
+    console.log(`Saved ${dataType} to disk`);
+    ws.send(JSON.stringify({
+      type: 'save_success',
+      dataType,
+      message: `Successfully saved ${dataType} to disk`
+    }));
+  } catch (error) {
+    console.error('Error saving data:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to save data: ${error.message}`
+    }));
+  }
+}
+
+function handleLoadData(ws) {
+  try {
+    if (fs.existsSync(SCRIPTS_FILE)) {
+      const allData = JSON.parse(fs.readFileSync(SCRIPTS_FILE, 'utf8'));
+      ws.send(JSON.stringify({
+        type: 'load_data',
+        content: allData
+      }));
+      console.log('Sent all data to client');
+    } else {
+      ws.send(JSON.stringify({
+        type: 'load_data',
+        content: {}
+      }));
+    }
+  } catch (error) {
+    console.error('Error loading data:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to load data: ${error.message}`
+    }));
+  }
 }
 
 // Graceful shutdown

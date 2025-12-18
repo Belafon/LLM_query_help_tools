@@ -25,6 +25,8 @@ const PowerShellManager = () => {
       ws.onopen = () => {
         console.log('Connected to PowerShell backend');
         setBackendStatus('connected');
+        // Request data from disk
+        ws.send(JSON.stringify({ type: 'load_data' }));
       };
 
       ws.onmessage = (event) => {
@@ -89,8 +91,17 @@ const PowerShellManager = () => {
       console.log('Saving scripts to localStorage:', scripts);
       localStorage.setItem('powershell-scripts', JSON.stringify(scripts));
       console.log('Scripts saved to localStorage');
+
+      // Also sync to disk via backend
+      if (backendStatus === 'connected' && wsRef.current) {
+        wsRef.current.send(JSON.stringify({
+          type: 'save_data',
+          dataType: 'powershell-scripts',
+          content: scripts
+        }));
+      }
     }
-  }, [scripts, scriptsLoaded]);
+  }, [scripts, scriptsLoaded, backendStatus]);
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
@@ -103,6 +114,13 @@ const PowerShellManager = () => {
         setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] ${data.message}\n\n`);
         setIsExecuting(false);
         setCurrentSessionId(null);
+        break;
+      
+      case 'load_data':
+        if (data.content && data.content['powershell-scripts']) {
+          console.log('Loaded powershell scripts from disk');
+          setScripts(data.content['powershell-scripts']);
+        }
         break;
       
       case 'error':
