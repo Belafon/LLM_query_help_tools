@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3001;
 const USER_DATA_DIR = path.join(__dirname, '..', 'user_data');
 const WORKSPACES_DIR = path.join(USER_DATA_DIR, 'workspaces');
 const SETTINGS_FILE = path.join(USER_DATA_DIR, 'settings.json');
+const GLOBAL_PATHS_FILE = path.join(USER_DATA_DIR, 'global_paths.json');
 
 if (!fs.existsSync(WORKSPACES_DIR)) {
   fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -47,6 +48,17 @@ if (fs.existsSync(SETTINGS_FILE)) {
 
 function getScriptsFilePath(workspaceName) {
   return path.join(WORKSPACES_DIR, workspaceName || settings.currentWorkspace, 'scripts.json');
+}
+
+function getGlobalPaths() {
+  if (fs.existsSync(GLOBAL_PATHS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(GLOBAL_PATHS_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Error loading global paths:', e);
+    }
+  }
+  return [];
 }
 
 app.use(cors());
@@ -177,11 +189,7 @@ function findAutoHotkeyExecutable() {
  */
 function replacePathAliases(scriptContent) {
   try {
-    const scriptsFile = getScriptsFilePath();
-    if (!fs.existsSync(scriptsFile)) return scriptContent;
-
-    const allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
-    const paths = allData.paths || [];
+    const paths = getGlobalPaths();
 
     let processedContent = scriptContent;
     
@@ -191,7 +199,8 @@ function replacePathAliases(scriptContent) {
         if (p.alias && p.path) {
           const escapedAlias = p.alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`{{${escapedAlias}}}`, 'g');
-          processedContent = processedContent.replace(regex, p.path);
+          // Use a function as the second argument to avoid special handling of $ in the path
+          processedContent = processedContent.replace(regex, () => p.path);
         }
       });
     } 
@@ -200,7 +209,7 @@ function replacePathAliases(scriptContent) {
       for (const [alias, actualPath] of Object.entries(paths)) {
         const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`{{${escapedAlias}}}`, 'g');
-        processedContent = processedContent.replace(regex, actualPath);
+        processedContent = processedContent.replace(regex, () => actualPath);
       }
     }
 
@@ -552,16 +561,21 @@ function handleAHKStatus(ws) {
 function handleSaveData(ws, data) {
   const { dataType, content } = data;
   try {
-    const scriptsFile = getScriptsFilePath();
-    let allData = {};
-    if (fs.existsSync(scriptsFile)) {
-      allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
+    if (dataType === 'paths') {
+      fs.writeFileSync(GLOBAL_PATHS_FILE, JSON.stringify(content, null, 2), 'utf8');
+      console.log('Saved global paths');
+    } else {
+      const scriptsFile = getScriptsFilePath();
+      let allData = {};
+      if (fs.existsSync(scriptsFile)) {
+        allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
+      }
+      
+      allData[dataType] = content;
+      fs.writeFileSync(scriptsFile, JSON.stringify(allData, null, 2), 'utf8');
+      console.log(`Saved ${dataType} to workspace "${settings.currentWorkspace}"`);
     }
     
-    allData[dataType] = content;
-    fs.writeFileSync(scriptsFile, JSON.stringify(allData, null, 2), 'utf8');
-    
-    console.log(`Saved ${dataType} to workspace "${settings.currentWorkspace}"`);
     ws.send(JSON.stringify({
       type: 'save_success',
       dataType,
@@ -579,21 +593,21 @@ function handleSaveData(ws, data) {
 function handleLoadData(ws) {
   try {
     const scriptsFile = getScriptsFilePath();
+    let allData = {};
+    
     if (fs.existsSync(scriptsFile)) {
-      const allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
-      ws.send(JSON.stringify({
-        type: 'load_data',
-        content: allData,
-        workspace: settings.currentWorkspace
-      }));
-      console.log(`Sent data for workspace "${settings.currentWorkspace}" to client`);
-    } else {
-      ws.send(JSON.stringify({
-        type: 'load_data',
-        content: {},
-        workspace: settings.currentWorkspace
-      }));
+      allData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
     }
+    
+    // Always include global paths
+    allData.paths = getGlobalPaths();
+
+    ws.send(JSON.stringify({
+      type: 'load_data',
+      content: allData,
+      workspace: settings.currentWorkspace
+    }));
+    console.log(`Sent data for workspace "${settings.currentWorkspace}" to client (including global paths)`);
   } catch (error) {
     console.error('Error loading data:', error);
     ws.send(JSON.stringify({
