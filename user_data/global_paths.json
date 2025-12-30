@@ -1,0 +1,38 @@
+[
+  {
+    "alias": "DB_DIR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\database"
+  },
+  {
+    "alias": "WEBAPI_DIR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\4"
+  },
+  {
+    "alias": "DB_REFLECTOR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\repos\\DbReflector"
+  },
+  {
+    "alias": "RESTAPI_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\repos\\RD_IDENTLOCK2_RESTAPI"
+  },
+  {
+    "alias": "DESK_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\source\\repos\\IDENTLOCK2_DESK"
+  },
+  {
+    "alias": "ANALYTICS_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\source\\repos\\IdentLock.Services.Analytics"
+  },
+  {
+    "alias": "TEST_IMAGES",
+    "path": "C:\\Users\\ondrej.tichavsky\\Pictures\\Testing\\Testing\\SubjectsTest - Copy"
+  },
+  {
+    "alias": "VS_2025",
+    "path": "C:\\Program Files\\Microsoft Visual Studio\\2025\\Preview\\Common7\\IDE\\devenv.exe"
+  },
+  {
+    "alias": "VSCODE_EXE",
+    "path": "C:\\Users\\ondrej.tichavsky\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+  }
+]

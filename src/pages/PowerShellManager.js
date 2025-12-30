@@ -11,9 +11,12 @@ const PowerShellManager = () => {
   const [output, setOutput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [compactView, setCompactView] = useState(true);
 
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [backendStatus, setBackendStatus] = useState('disconnected');
+  const [currentWorkspace, setCurrentWorkspace] = useState('Default');
+  const [workspaces, setWorkspaces] = useState([]);
   const wsRef = useRef(null);
 
   const connectToBackend = () => {
@@ -24,6 +27,9 @@ const PowerShellManager = () => {
       ws.onopen = () => {
         console.log('Connected to PowerShell backend');
         setBackendStatus('connected');
+        // Request data from disk
+        ws.send(JSON.stringify({ type: 'load_data' }));
+        ws.send(JSON.stringify({ type: 'list_workspaces' }));
       };
 
       ws.onmessage = (event) => {
@@ -88,8 +94,17 @@ const PowerShellManager = () => {
       console.log('Saving scripts to localStorage:', scripts);
       localStorage.setItem('powershell-scripts', JSON.stringify(scripts));
       console.log('Scripts saved to localStorage');
+
+      // Also sync to disk via backend
+      if (backendStatus === 'connected' && wsRef.current) {
+        wsRef.current.send(JSON.stringify({
+          type: 'save_data',
+          dataType: 'powershell-scripts',
+          content: scripts
+        }));
+      }
     }
-  }, [scripts, scriptsLoaded]);
+  }, [scripts, scriptsLoaded, backendStatus]);
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
@@ -102,6 +117,34 @@ const PowerShellManager = () => {
         setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] ${data.message}\n\n`);
         setIsExecuting(false);
         setCurrentSessionId(null);
+        break;
+      
+      case 'load_data':
+        if (data.content && data.content['powershell-scripts']) {
+          console.log('Loaded powershell scripts from disk');
+          setScripts(data.content['powershell-scripts']);
+        } else {
+          setScripts({}); // Clear if no scripts in this workspace
+        }
+        if (data.workspace) {
+          setCurrentWorkspace(data.workspace);
+        }
+        break;
+      
+      case 'workspace_list':
+        setWorkspaces(data.workspaces || []);
+        if (data.current) {
+          setCurrentWorkspace(data.current);
+        }
+        break;
+      
+      case 'workspace_switched':
+        setCurrentWorkspace(data.workspace);
+        setOutput(prev => prev + `[SYSTEM] Switched to workspace: ${data.workspace}\n`);
+        // Reload data for the new workspace
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'load_data' }));
+        }
         break;
       
       case 'error':
@@ -232,18 +275,50 @@ const PowerShellManager = () => {
     }
   };
 
+  const handleSwitchWorkspace = (e) => {
+    const workspaceName = e.target.value;
+    if (workspaceName && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'switch_workspace',
+        name: workspaceName
+      }));
+    }
+  };
+
 
 
   const renderScriptList = () => (
     <div className="script-list-view">
       <div className="view-header">
-        <h2>PowerShell Scripts</h2>
-        <button 
-          className="btn btn-primary"
-          onClick={handleCreateNew}
-        >
-          Create New Script
-        </button>
+        <div className="header-title-group">
+          <h2>PowerShell Scripts</h2>
+          <div className="workspace-badge">
+            Workspace: 
+            <select 
+              className="workspace-select" 
+              value={currentWorkspace} 
+              onChange={handleSwitchWorkspace}
+            >
+              {workspaces.map(ws => (
+                <option key={ws} value={ws}>{ws}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            className="btn btn-secondary toggle-view-btn"
+            onClick={() => setCompactView(!compactView)}
+          >
+            {compactView ? '☰ Expand' : '⚊ Compact'}
+          </button>
+          <button 
+            className="btn btn-primary"
+            onClick={handleCreateNew}
+          >
+            Create New Script
+          </button>
+        </div>
       </div>
       
       {Object.keys(scripts).length === 0 ? (
@@ -251,33 +326,69 @@ const PowerShellManager = () => {
           <p>No scripts found. Create your first PowerShell script!</p>
         </div>
       ) : (
-        <div className="scripts-grid">
+        <div className={compactView ? 'script-list-compact' : 'scripts-grid'}>
           {Object.entries(scripts).map(([scriptId, script]) => (
-            <div key={scriptId} className="script-card">
-              <div className="script-info">
+            <div key={scriptId} className={compactView ? 'script-card-compact' : 'script-card'}>
+              <div className={compactView ? 'script-info-compact' : 'script-info'}>
                 <h3>{script.name}</h3>
               </div>
-              <div className="script-actions">
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => handleExecuteFromList(scriptId)}
-                  disabled={isExecuting || backendStatus !== 'connected'}
-                >
-                  Execute
-                </button>
-                <button 
-                  className="btn btn-secondary"
-                  onClick={() => handleSelectScript(scriptId)}
-                >
-                  Open
-                </button>
-                <button 
-                  className="btn btn-danger"
-                  onClick={() => handleDeleteScript(scriptId)}
-                >
-                  Delete
-                </button>
-              </div>
+              {compactView ? (
+                <div className="script-actions-compact">
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-primary"
+                      onClick={() => handleExecuteFromList(scriptId)}
+                      disabled={isExecuting || backendStatus !== 'connected'}
+                      aria-label="Execute"
+                    >
+                      ▶
+                    </button>
+                    <span className="tooltip-text">Execute</span>
+                  </div>
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-secondary"
+                      onClick={() => handleSelectScript(scriptId)}
+                      aria-label="Open"
+                    >
+                      📄
+                    </button>
+                    <span className="tooltip-text">Open</span>
+                  </div>
+                  <div className="tooltip-wrapper">
+                    <button 
+                      className="btn-icon btn-danger"
+                      onClick={() => handleDeleteScript(scriptId)}
+                      aria-label="Delete"
+                    >
+                      🗑
+                    </button>
+                    <span className="tooltip-text">Delete</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="script-actions">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => handleExecuteFromList(scriptId)}
+                    disabled={isExecuting || backendStatus !== 'connected'}
+                  >
+                    Execute
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => handleSelectScript(scriptId)}
+                  >
+                    Open
+                  </button>
+                  <button 
+                    className="btn btn-danger"
+                    onClick={() => handleDeleteScript(scriptId)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

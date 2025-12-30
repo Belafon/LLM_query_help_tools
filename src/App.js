@@ -2,12 +2,14 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css';
 import Sidebar from './components/Sidebar';
+import Launcher from './components/Launcher';
 import pageRegistry from './config/pageRegistry';
 
 function App() {
   return (
     <Router>
       <div className="App">
+        <Launcher />
         <Sidebar pages={pageRegistry} />
         <main className="main-content">
           <Routes>

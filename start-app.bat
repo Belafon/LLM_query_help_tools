@@ -10,6 +10,11 @@ cd ..
 echo [2/2] Waiting 3 seconds for backend to start...
 timeout /t 3 /nobreak > nul
 
+echo [3/3] Starting Quick Launcher...
+cd user_data
+start "" "launcher_gui.ahk"
+cd ..
+
 echo Starting Frontend Application...
 npm start
 

@@ -1,3 +1,7 @@
+:root {
+  --sidebar-width: 250px;
+}
+
 .App {
   display: flex;
   height: 100vh;
@@ -7,20 +11,18 @@
 
 .main-content {
   flex: 1;
-  margin-left: 250px;
+  margin-left: var(--sidebar-width);
   padding: 0;
   overflow-y: auto;
   background-color: #0d1117;
-  width: calc(100vw - 250px);
+  width: calc(100vw - var(--sidebar-width));
   height: 100vh;
+  transition: margin-left 0.3s ease, width 0.3s ease;
 }
 
 /* Responsive design for smaller screens */
 @media (max-width: 768px) {
-  .main-content {
-    margin-left: 200px;
-    width: calc(100vw - 200px);
-  }
+  /* No need to override - CSS variable handles it */
 }
 
 .App-logo {
