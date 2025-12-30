@@ -2,7 +2,7 @@
   "powershell-scripts": {
     "1758889935177": {
       "name": "update test 2.10 database",
-      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseName \"IdentLock2-2.10-Test\""
+      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended"
     },
     "1758898124694": {
       "name": "update Identlock2 + Reflect",

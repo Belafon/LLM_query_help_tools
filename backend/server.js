@@ -69,6 +69,109 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PowerShell Backend Service is running' });
 });
 
+// Execute script endpoint (for external tools like AHK)
+app.post('/api/execute', async (req, res) => {
+  console.log('Received /api/execute request');
+  const { script, scriptName, restoreFocus, scriptBase64 } = req.body;
+  
+  let scriptContent = script;
+  if (scriptBase64) {
+    try {
+      scriptContent = Buffer.from(scriptBase64, 'base64').toString('utf8');
+      console.log(`Decoded base64 script: ${scriptName}`);
+    } catch (e) {
+      console.error('Base64 decode error:', e);
+      return res.status(400).json({ error: 'Invalid base64 script content' });
+    }
+  }
+
+  if (!scriptContent) {
+    console.error('No script content provided');
+    return res.status(400).json({ error: 'Script content is required' });
+  }
+
+  try {
+    const sessionId = uuidv4();
+    const processedScript = replacePathAliases(scriptContent);
+    
+    // Prepare focus restoration code
+    let focusRestoreCode = '';
+    if (restoreFocus) {
+      try {
+        const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
+        if (fs.existsSync(lastWindowFile)) {
+          const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
+          if (lastHwnd) {
+            console.log(`Preparing focus restore for HWND: ${lastHwnd}`);
+            focusRestoreCode = `
+    # Restore focus to previous window
+    try {
+        $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);'
+        $type = Add-Type -MemberDefinition $sig -Name Win32 -Namespace Win32 -PassThru
+        $hwnd = [IntPtr]::new(${lastHwnd})
+        $null = $type::SetForegroundWindow($hwnd)
+        Write-Host "Restored focus to previous window" -ForegroundColor Gray
+    } catch {
+        Write-Host "Failed to restore focus: $_" -ForegroundColor DarkGray
+    }
+`;
+          }
+        }
+      } catch (e) {
+        console.error('Error preparing focus restore:', e);
+      }
+    }
+
+    const tempDir = os.tmpdir();
+    const scriptFileName = `ps_script_${sessionId}.ps1`;
+    const batchFileName = `run_script_${sessionId}.bat`;
+    const scriptPath = path.join(tempDir, scriptFileName);
+    const batchPath = path.join(tempDir, batchFileName);
+
+    const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
+$Host.UI.RawUI.WindowTitle = "PowerShell Manager - ${scriptName || 'Unnamed Script'}"
+try {
+${processedScript}
+${focusRestoreCode}
+    Write-Host "=== Completed ===" -ForegroundColor Green
+} catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+}
+Write-Host "Press any key to close..." -ForegroundColor Yellow
+try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host "Press Enter" }
+`;
+
+    const batchContent = `@echo off
+title PowerShell Manager - ${scriptName || 'Unnamed Script'}
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"
+`;
+
+    fs.writeFileSync(scriptPath, psScript, 'utf8');
+    fs.writeFileSync(batchPath, batchContent, 'utf8');
+
+    console.log(`Spawning batch file: ${batchPath}`);
+    const psProcess = spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', batchPath], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
+        if (fs.existsSync(batchPath)) fs.unlinkSync(batchPath);
+      } catch (e) {}
+    }, 60000);
+
+    psProcess.unref();
+
+    res.json({ success: true, message: 'Script started' });
+
+  } catch (error) {
+    console.error('Error executing script via HTTP:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Store running AutoHotkey processes
 const runningAHKScripts = new Map(); // scriptId -> { process, scriptPath }
 
@@ -395,7 +498,7 @@ wss.on('connection', (ws) => {
 
 async function handleScriptExecution(ws, data) {
   const sessionId = uuidv4();
-  const { script, scriptName } = data;
+  const { script, scriptName, restoreFocus } = data;
 
   try {
     // Replace path aliases before execution
@@ -415,6 +518,33 @@ async function handleScriptExecution(ws, data) {
     const scriptPath = path.join(tempDir, scriptFileName);
     const batchPath = path.join(tempDir, batchFileName);
 
+    // Prepare focus restoration code
+    let focusRestoreCode = '';
+    if (restoreFocus) {
+      try {
+        const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
+        if (fs.existsSync(lastWindowFile)) {
+          const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
+          if (lastHwnd) {
+            focusRestoreCode = `
+    # Restore focus to previous window
+    try {
+        $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);'
+        $type = Add-Type -MemberDefinition $sig -Name Win32 -Namespace Win32 -PassThru
+        $hwnd = [IntPtr]::new(${lastHwnd})
+        $null = $type::SetForegroundWindow($hwnd)
+        Write-Host "Restored focus to previous window (HWND: ${lastHwnd})" -ForegroundColor Gray
+    } catch {
+        Write-Host "Failed to restore focus: $_" -ForegroundColor DarkGray
+    }
+`;
+          }
+        }
+      } catch (e) {
+        console.error('Error preparing focus restore:', e);
+      }
+    }
+
     // Create PowerShell script with proper formatting
     const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
 # Generated by PowerShell Manager
@@ -429,7 +559,7 @@ try {
     # User script starts here
 ${processedScript}
     # User script ends here
-    
+    ${focusRestoreCode}
     Write-Host ""
     Write-Host "=== Script execution completed successfully ===" -ForegroundColor Green
 } catch {
