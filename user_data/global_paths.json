@@ -4,7 +4,7 @@
     "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\database"
   },
   {
-    "alias": "WEBAPI_DIR",
+    "alias": "WEBAPI_DIR4",
     "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\4"
   },
   {
@@ -34,5 +34,9 @@
   {
     "alias": "VSCODE_EXE",
     "path": "C:\\Users\\ondrej.tichavsky\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+  },
+  {
+    "alias": "WEBAPI_DIR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\5"
   }
 ]

@@ -2,15 +2,15 @@
   "powershell-scripts": {
     "1758889935177": {
       "name": "update test 2.10 database",
-      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended"
+      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended"
     },
     "1758898124694": {
       "name": "update Identlock2 + Reflect",
-      "content": "cd {{DB_DIR}}\\\n& git pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11.7.9-pre\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"IdentLock2\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"shgZ4Kjk8xNduymekoZg\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\""
+      "content": "cd {{DB_DIR}}\\\n& git pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"IdentLock2\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"shgZ4Kjk8xNduymekoZg\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\""
     },
     "1759134386739": {
       "name": "update stage db",
-      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11.8.2\" -DatabaseName \"IdentLock2-2.9-Stage\""
+      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11.8.7\" -DatabaseName \"IdentLock2-2.9-Stage\""
     },
     "1759134419724": {
       "name": "update benchmark db",
@@ -38,11 +38,11 @@
     },
     "1762432402656": {
       "name": "new domain nuget package",
-      "content": "cd \"{{WEBAPI_DIR}}\\src\\Identlock2.Domain\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\domain-push.ps1\" -Version \"2.11.8.2\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
+      "content": "cd \"{{WEBAPI_DIR}}\\src\\Identlock2.Domain\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\domain-push.ps1\" -Version \"2.11.8.8\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
     },
     "1762443630962": {
       "name": "web api new nuget",
-      "content": "cd \"{{WEBAPI_DIR}}\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\nuget-push.ps1\" -Version \"2.11.7.6\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
+      "content": "cd \"{{WEBAPI_DIR}}\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\nuget-push.ps1\" -Version \"2.11.8.7\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
     },
     "1762524535175": {
       "name": "CMDL instant searches",
@@ -65,37 +65,37 @@
     "1762778133586": {
       "name": "ctrl alt 2 - db project",
       "content": "; VSCode window activator for your sqlserver project (AutoHotkey v2)\n; Updated Hotkey: Ctrl + Alt + 2 (avoids Windows taskbar conflict)\n#SingleInstance Force\n\n^!2::\n{\n    projectPath := \"{{DB_DIR}}\\\"\n    folderHint := \"sqlserver\"\n\n    ; Find existing VS Code windows\n    hwnds := WinGetList(\"ahk_exe Code.exe\")\n    for hwnd in hwnds {\n        title := WinGetTitle(hwnd)\n        if InStr(title, folderHint) || InStr(title, projectPath) {\n            WinActivate \"ahk_id \" hwnd\n            return\n        }\n    }\n\n    ; If not found, open VS Code at that folder.\n    try {\n        Run Format('code \"{1}\"', projectPath)\n    } catch {\n        ; Fallback to Code.exe absolute path if code CLI is not in PATH\n        Run Format('\"{{VSCODE_EXE}}\" \"{1}\"', projectPath)\n    }\n}\n",
-      "autoStart": false
+      "autoStart": true
     },
     "1762782149742": {
       "name": "ctrl alt 1 - teams",
       "content": "#Requires AutoHotkey v2.0\n#UseHook  ; Force hook to override Windows hotkeys\n\n; ============================================\n; Ctrl + Alt + 1: Microsoft Teams in Edge\n; ============================================\n^!1::\n{\n    teamsURL   := \"https://teams.microsoft.com\"\n    edgeExe    := \"msedge.exe\"\n    teamsTitle := \"Milan Pašek\"  ; Partial match for your Teams chat window\n    \n    SetTitleMatchMode(2)  ; Partial match\n    \n    ; Check if any Edge window with Teams is open\n    edgeWindows := WinGetList(\"ahk_exe \" . edgeExe)\n    \n    foundTeams := false\n    for hwnd in edgeWindows\n    {\n        title := WinGetTitle(\"ahk_id \" . hwnd)\n        ; Check if the window title contains Teams indicators\n        if (InStr(title, teamsTitle) && InStr(title, \"Microsoft Teams\"))\n        {\n            WinActivate(\"ahk_id \" . hwnd)\n            foundTeams := true\n            break\n        }\n    }\n    \n    if (!foundTeams)\n    {\n        ; Check if Edge is running at all\n        if (edgeWindows.Length > 0)\n        {\n            ; Edge is open but no Teams tab - open Teams in new tab\n            Run(\"microsoft-edge:\" . teamsURL)\n        }\n        else\n        {\n            ; Edge is not open - open Edge with Teams\n            ; Edge should restore previous tabs automatically\n            Run(\"microsoft-edge:\" . teamsURL)\n            \n            ; Wait a moment for Edge to open and restore tabs\n            Sleep(2000)\n            \n            ; Check again if Teams tab was restored\n            edgeWindows := WinGetList(\"ahk_exe \" . edgeExe)\n            foundTeams := false\n            \n            for hwnd in edgeWindows\n            {\n                title := WinGetTitle(\"ahk_id \" . hwnd)\n                if (InStr(title, teamsTitle) && InStr(title, \"Microsoft Teams\"))\n                {\n                    WinActivate(\"ahk_id \" . hwnd)\n                    foundTeams := true\n                    break\n                }\n            }\n            \n            ; If Teams tab still not found after restore, the new tab with Teams should already be open\n            ; Just activate Edge\n            if (!foundTeams && edgeWindows.Length > 0)\n            {\n                WinActivate(\"ahk_id \" . edgeWindows[1])\n            }\n        }\n    }\n}",
-      "autoStart": true
+      "autoStart": false
     },
     "1763029706359": {
       "name": "asd",
       "content": "#Requires AutoHotkey v2.0\n#UseHook\n\n^!1::\n{\n    MsgBox \"AHK got Ctrl+Alt+1\"\n}\n\nF9::\n{\n    KeyHistory()  ; Shows what keys AHK has seen\n}\n",
-      "autoStart": true
+      "autoStart": false
     },
     "1764840628490": {
-      "name": "ctrl+3 - web Api",
-      "content": "; VSCode window activator for your \"3\" project (AutoHotkey v2)\n; Hotkey: Ctrl + Alt + 3\n#SingleInstance Force\n\n^!3::\n{\n    projectPath := \"{{WEBAPI_DIR}}\\\"\n    folderHint  := \"4\"\n\n    ; Find existing VS Code windows\n    hwnds := WinGetList(\"ahk_exe Code.exe\")\n    for hwnd in hwnds {\n        title := WinGetTitle(hwnd)\n        if InStr(title, folderHint) || InStr(title, projectPath) {\n            WinActivate \"ahk_id \" hwnd\n            return\n        }\n    }\n\n    ; If not found, open VS Code at that folder.\n    try {\n        Run Format('code \"{1}\"', projectPath)\n    } catch {\n        ; Fallback to Code.exe absolute path if code CLI is not in PATH\n        Run Format('\"{{VSCODE_EXE}}\" \"{1}\"', projectPath)\n    }\n}\n",
-      "autoStart": false
+      "name": "ctrl+alt+3 - web Api",
+      "content": "; VSCode window activator for your \"3\" project (AutoHotkey v2)\n; Hotkey: Ctrl + Alt + 3\n#SingleInstance Force\n\n^!3::\n{\n    projectPath := \"{{WEBAPI_DIR}}\\\"\n    folderHint  := \"5\"\n\n    ; Find existing VS Code windows\n    hwnds := WinGetList(\"ahk_exe Code.exe\")\n    for hwnd in hwnds {\n        title := WinGetTitle(hwnd)\n        if InStr(title, folderHint) || InStr(title, projectPath) {\n            WinActivate \"ahk_id \" hwnd\n            return\n        }\n    }\n\n    ; If not found, open VS Code at that folder.\n    try {\n        Run Format('code \"{1}\"', projectPath)\n    } catch {\n        ; Fallback to Code.exe absolute path if code CLI is not in PATH\n        Run Format('\"{{VSCODE_EXE}}\" \"{1}\"', projectPath)\n    }\n}\n",
+      "autoStart": true
     },
     "1764841371444": {
       "name": "ctrl + alt + 4 - web api visual studio",
       "content": "; Visual Studio 2025 Preview window activator for \"trash\\4\" project (AutoHotkey v2)\n; Hotkey: Ctrl + Alt + 4\n#SingleInstance Force\n\n^!4::\n{\n    projectPath := \"{{WEBAPI_DIR}}\\\"\n    solutionFile := \"src\\IdentLock2 Web Api.sln\"\n    folderHint  := \"4\"\n\n    ; 1) Try to find an existing Visual Studio window\n    hwnds := WinGetList(\"ahk_exe devenv.exe\")\n    for hwnd in hwnds {\n        title := WinGetTitle(hwnd)\n        if InStr(title, folderHint) || InStr(title, \"IdentLock2 Web Api\") {\n            WinActivate \"ahk_id \" hwnd\n            return\n        }\n    }\n\n    ; 2) Launch Visual Studio 2025 Preview with the solution\n    vsPath := \"{{VS_2025}}\"\n    fullSolutionPath := projectPath . solutionFile\n    \n    if FileExist(vsPath) {\n        Run Format('\"{1}\" \"{2}\"', vsPath, fullSolutionPath)\n    } else {\n        MsgBox \"Visual Studio 2025 Preview not found at: \" vsPath\n    }\n}",
-      "autoStart": false
+      "autoStart": true
     },
     "1764841615412": {
       "name": "ctrl + alt + 1 - DbReflector",
       "content": "; VSCode window activator for your \"3\" project (AutoHotkey v2)\n; Hotkey: Ctrl + Alt + 1\n#SingleInstance Force\n\n^!1::\n{\n    projectPath := \"{{DB_REFLECTOR}}\\\"\n    folderHint  := \"DbReflector\"\n\n    ; Find existing VS Code windows\n    hwnds := WinGetList(\"ahk_exe Code.exe\")\n    for hwnd in hwnds {\n        title := WinGetTitle(hwnd)\n        if InStr(title, folderHint) || InStr(title, projectPath) {\n            WinActivate \"ahk_id \" hwnd\n            return\n        }\n    }\n\n    ; If not found, open VS Code at that folder.\n    try {\n        Run Format('code \"{1}\"', projectPath)\n    } catch {\n        ; Fallback to Code.exe absolute path if code CLI is not in PATH\n        Run Format('\"{{VSCODE_EXE}}\" \"{1}\"', projectPath)\n    }\n}\n",
-      "autoStart": false
+      "autoStart": true
     },
     "1764842326983": {
       "name": "ctrl + alt + 5 - tools",
       "content": "; Microsoft Edge – activate or open and select 7th tab (AutoHotkey v2)\n; Hotkey: Ctrl + Alt + 5\n#SingleInstance Force\n\n^!5::\n{\n    edgeExe := \"ahk_exe msedge.exe\"\n\n    ; 1) Try to find an existing Edge window\n    hwnds := WinGetList(edgeExe)\n    if hwnds.Length {\n        ; Activate first Edge window and jump to 7th tab\n        WinActivate \"ahk_id \" hwnds[1]\n        Sleep 80  ; tiny delay to ensure focus\n        ; Edge uses Ctrl+1..Ctrl+8 to jump to tab 1..8, Ctrl+9 = last tab\n        ; so Ctrl+7 = 7th tab from the left\n        Send \"^8\"\n        return\n    }\n\n    ; 2) Edge not running → launch it\n    edgePath := GetEdgePath()\n    if edgePath {\n        Run Format('\"{1}\"', edgePath)\n    } else {\n        ; Fallback: let Windows try to resolve msedge.exe\n        Run \"msedge.exe\"\n    }\n\n    ; 3) Wait for Edge window, then make sure we have a 7th tab and select it\n    if WinWait(edgeExe,, 5) {   ; wait up to 5 seconds\n        WinActivate edgeExe\n        Sleep 200\n\n        ; New Edge window usually starts with 1 tab.\n        ; Create 6 more (total 7) using Ctrl+T, then jump to tab 7 with Ctrl+7.\n        Loop 6 {\n            Send \"^t\"   ; open new tab\n            Sleep 80\n        }\n        Send \"^7\"\n    } else {\n        MsgBox \"Could not find or start Microsoft Edge.\"\n    }\n}\n\nGetEdgePath() {\n    ; Try typical install locations for msedge.exe\n    candidates := []\n\n    pf  := EnvGet(\"ProgramFiles\")          ; usually C:\\Program Files\n    pf86 := EnvGet(\"ProgramFiles(x86)\")    ; usually C:\\Program Files (x86)\n\n    if pf\n        candidates.Push(pf  . \"\\Microsoft\\Edge\\Application\\msedge.exe\")\n    if pf86\n        candidates.Push(pf86 . \"\\Microsoft\\Edge\\Application\\msedge.exe\")\n\n    for path in candidates {\n        if FileExist(path)\n            return path\n    }\n\n    ; No known path found\n    return \"\"\n}\n",
-      "autoStart": false
+      "autoStart": true
     }
   }
 }

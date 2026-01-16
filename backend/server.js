@@ -64,6 +64,56 @@ function getGlobalPaths() {
 app.use(cors());
 app.use(express.json());
 
+// Endpoint to read files by absolute path
+app.post('/api/read-files', async (req, res) => {
+  console.log('Received /api/read-files request:', req.body.paths?.length, 'paths');
+  const { paths } = req.body;
+  if (!Array.isArray(paths)) {
+    return res.status(400).json({ error: 'Paths must be an array' });
+  }
+
+  const results = [];
+  for (const filePath of paths) {
+    if (!filePath || filePath.trim() === '') continue;
+    
+    try {
+      const normalizedPath = filePath.trim();
+      if (fs.existsSync(normalizedPath)) {
+        const stats = fs.statSync(normalizedPath);
+        if (stats.isFile()) {
+          const content = fs.readFileSync(normalizedPath, 'utf8');
+          results.push({
+            path: normalizedPath,
+            content: content,
+            success: true
+          });
+        } else if (stats.isDirectory()) {
+          // For now, let's keep it simple and just report it's a directory
+          // or we could recursively read it. The user asked for "paths to files".
+          results.push({
+            path: normalizedPath,
+            error: 'Paths to directories are not supported in this box. Please use drag & drop for folders.',
+            success: false
+          });
+        }
+      } else {
+        results.push({
+          path: normalizedPath,
+          error: 'File not found',
+          success: false
+        });
+      }
+    } catch (error) {
+      results.push({
+        path: filePath,
+        error: error.message,
+        success: false
+      });
+    }
+  }
+  res.json({ results });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'PowerShell Backend Service is running' });
@@ -195,10 +245,11 @@ function pathPointsToExecutable(filePath) {
  * @returns {string|null} Full path to the AutoHotkey executable or null if not found.
  */
 function findAutoHotkeyExecutable() {
+  // Prioritize v2 executables and specific architectures to avoid the launcher prompt
   const candidateFileNames = [
-    'AutoHotkey.exe',
     'AutoHotkey64.exe',
     'AutoHotkey32.exe',
+    'AutoHotkey.exe',
     'AutoHotkeyU64.exe',
     'AutoHotkeyU32.exe',
     'AutoHotkeyUX.exe',
@@ -230,10 +281,11 @@ function findAutoHotkeyExecutable() {
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : null
   ].filter(Boolean);
 
+  // Prioritize v2 directory
   const autoHotkeySubDirs = [
-    '',
-    'AutoHotkey',
     path.join('AutoHotkey', 'v2'),
+    'AutoHotkey',
+    '',
     path.join('AutoHotkey', 'v1'),
     path.join('AutoHotkey', 'UX')
   ];
@@ -660,19 +712,21 @@ pause
 }
 
 // AutoHotkey script handlers
-async function handleAHKRun(ws, data) {
-  const { scriptId, script, scriptName } = data;
-
+async function runAHKScriptInternal(scriptId, scriptContent, scriptName, ws = null) {
   try {
     // Replace path aliases before execution
-    const processedScript = replacePathAliases(script);
+    const processedScript = replacePathAliases(scriptContent);
 
     // Check if script is already running
     if (runningAHKScripts.has(scriptId)) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: `Script "${scriptName}" is already running. Stop it first.`
-      }));
+      const msg = `Script "${scriptName}" is already running. Stop it first.`;
+      console.log(msg);
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: msg
+        }));
+      }
       return;
     }
 
@@ -680,10 +734,14 @@ async function handleAHKRun(ws, data) {
     const ahkPath = findAutoHotkeyExecutable();
 
     if (!ahkPath) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'AutoHotkey executable not found. Install AutoHotkey or set AUTOHOTKEY_PATH to the executable.'
-      }));
+      const msg = 'AutoHotkey executable not found. Install AutoHotkey or set AUTOHOTKEY_PATH to the executable.';
+      console.error(msg);
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: msg
+        }));
+      }
       return;
     }
 
@@ -721,27 +779,38 @@ async function handleAHKRun(ws, data) {
         console.log('Could not clean up script file:', error.message);
       }
 
-      // Notify client
-      ws.send(JSON.stringify({
-        type: 'ahk_stop',
-        scriptId: scriptId,
-        message: `Script "${scriptName}" has stopped.`
-      }));
+      // Notify client if connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'ahk_stop',
+          scriptId: scriptId,
+          message: `Script "${scriptName}" has stopped.`
+        }));
+      }
     });
 
-    ws.send(JSON.stringify({
-      type: 'ahk_start',
-      scriptId: scriptId,
-      message: `Script "${scriptName}" started successfully.`
-    }));
+    if (ws) {
+      ws.send(JSON.stringify({
+        type: 'ahk_start',
+        scriptId: scriptId,
+        message: `Script "${scriptName}" started successfully.`
+      }));
+    }
 
   } catch (error) {
     console.error('Error running AutoHotkey script:', error);
-    ws.send(JSON.stringify({
-      type: 'error',
-      message: `Failed to run script: ${error.message}`
-    }));
+    if (ws) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: `Failed to run script: ${error.message}`
+      }));
+    }
   }
+}
+
+async function handleAHKRun(ws, data) {
+  const { scriptId, script, scriptName } = data;
+  await runAHKScriptInternal(scriptId, script, scriptName, ws);
 }
 
 async function handleAHKStop(ws, data) {
@@ -957,7 +1026,38 @@ process.on('SIGINT', () => {
   });
 });
 
+function startAutoStartScripts() {
+  console.log('Checking for auto-start scripts...');
+  const scriptsFile = getScriptsFilePath();
+  if (fs.existsSync(scriptsFile)) {
+    try {
+      const scriptsData = JSON.parse(fs.readFileSync(scriptsFile, 'utf8'));
+      const hotkeyScripts = scriptsData['hotkey-scripts'] || {};
+      
+      let count = 0;
+      for (const [id, script] of Object.entries(hotkeyScripts)) {
+        if (script.autoStart) {
+          console.log(`Auto-starting script: ${script.name} (${id})`);
+          runAHKScriptInternal(id, script.content, script.name);
+          count++;
+        }
+      }
+      console.log(`Started ${count} auto-start scripts.`);
+    } catch (e) {
+      console.error('Error starting auto-start scripts:', e);
+    }
+  } else {
+    console.log('No scripts file found for current workspace.');
+  }
+}
+
 server.listen(PORT, () => {
+  console.log('===================================================');
   console.log(`PowerShell Backend Service running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log('API Endpoint /api/read-files is READY');
+  console.log('===================================================');
+  
+  // Start auto-start scripts after server is up
+  startAutoStartScripts();
 });
