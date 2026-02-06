@@ -38,11 +38,11 @@
     },
     "1762432402656": {
       "name": "new domain nuget package",
-      "content": "cd \"{{WEBAPI_DIR}}\\src\\Identlock2.Domain\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\domain-push.ps1\" -Version \"2.11.8.8\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
+      "content": "cd \"{{WEBAPI_DIR}}\\src\\Identlock2.Domain\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\domain-push.ps1\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
     },
     "1762443630962": {
       "name": "web api new nuget",
-      "content": "cd \"{{WEBAPI_DIR}}\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\nuget-push.ps1\" -Version \"2.11.8.7\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
+      "content": "cd \"{{WEBAPI_DIR}}\" ; powershell -NoProfile -ExecutionPolicy Bypass -File \".\\nuget-push.ps1\" -AccessKey \"{{AZURE_DEVOPS_PAT}}\""
     },
     "1762524535175": {
       "name": "CMDL instant searches",
@@ -59,6 +59,18 @@
     "1764233602771": {
       "name": "featch all projects",
       "content": "# PowerShell script to fetch multiple Git repositories and their submodules\n\n# Define the list of repositories to fetch\n$repositories = @(\n    \"{{RESTAPI_REPO}}\\\",\n    \"{{WEBAPI_DIR}}\\\",\n    \"{{DB_DIR}}\\\",\n    \"{{DB_REFLECTOR}}\\\",\n    \"{{DESK_REPO}}\\\"\n)\n\n# Function to fetch a repository and its submodules\nfunction Fetch-Repository {\n    param (\n        [string]$repoPath\n    )\n    \n    Write-Host \"\"\n    Write-Host \"========================================\" -ForegroundColor Cyan\n    Write-Host \"Processing: $repoPath\" -ForegroundColor Cyan\n    Write-Host \"========================================\" -ForegroundColor Cyan\n    \n    # Check if directory exists\n    if (-not (Test-Path $repoPath)) {\n        Write-Host \"ERROR: Directory does not exist: $repoPath\" -ForegroundColor Red\n        return\n    }\n    \n    # Check if it's a git repository\n    $gitPath = Join-Path $repoPath \".git\"\n    if (-not (Test-Path $gitPath)) {\n        Write-Host \"ERROR: Not a git repository: $repoPath\" -ForegroundColor Red\n        return\n    }\n    \n    try {\n        # Change to repository directory\n        Push-Location $repoPath\n        \n        # Fetch main repository\n        Write-Host \"Fetching main repository...\" -ForegroundColor Yellow\n        git fetch --all --prune\n        \n        if ($LASTEXITCODE -eq 0) {\n            Write-Host \"[OK] Main repository fetched successfully\" -ForegroundColor Green\n        } else {\n            Write-Host \"[FAIL] Failed to fetch main repository\" -ForegroundColor Red\n        }\n        \n        # Check if repository has submodules\n        $gitmodulesPath = Join-Path $repoPath \".gitmodules\"\n        if (Test-Path $gitmodulesPath) {\n            Write-Host \"Fetching submodules...\" -ForegroundColor Yellow\n            git submodule update --init --recursive\n            git submodule foreach --recursive git fetch --all --prune\n            \n            if ($LASTEXITCODE -eq 0) {\n                Write-Host \"[OK] Submodules fetched successfully\" -ForegroundColor Green\n            } else {\n                Write-Host \"[FAIL] Failed to fetch submodules\" -ForegroundColor Red\n            }\n        } else {\n            Write-Host \"No submodules found\" -ForegroundColor Gray\n        }\n    }\n    catch {\n        Write-Host \"ERROR: $_\" -ForegroundColor Red\n    }\n    finally {\n        # Return to original directory\n        Pop-Location\n    }\n}\n\n# Main execution\nWrite-Host \"\"\nWrite-Host \"========================================\"\nWrite-Host \"  Git Fetch Multiple Repositories\"\nWrite-Host \"========================================\"\nWrite-Host \"\"\n\n$startTime = Get-Date\n\n# Process each repository\nforeach ($repo in $repositories) {\n    Fetch-Repository -repoPath $repo\n}\n\n$endTime = Get-Date\n$duration = $endTime - $startTime\n\nWrite-Host \"\"\nWrite-Host \"========================================\" -ForegroundColor Cyan\nWrite-Host \"Summary\" -ForegroundColor Cyan\nWrite-Host \"========================================\" -ForegroundColor Cyan\nWrite-Host \"Total repositories processed: $($repositories.Count)\" -ForegroundColor White\nWrite-Host \"Total time: $($duration.ToString('mm\\:ss'))\" -ForegroundColor White\nWrite-Host \"\"\nWrite-Host \"All operations completed!\" -ForegroundColor Green"
+    },
+    "1768568133400": {
+      "name": "deploy postgre empty database",
+      "content": "cd {{DB_DIR}}\\postgres; docker compose down -v; docker compose up -d; Start-Sleep -Seconds 10; powershell.exe -NoProfile -Command '$pwd = (Get-Location).Path; docker run --env-file .env --rm --network=postgres_identlock-network -v \"${pwd}\\IdentLock2:/output\" identlock-postgres deploy --all --auto-confirm --create-database'; docker ps\n"
+    },
+    "1769371544467": {
+      "name": "update procedure db",
+      "content": "\ncd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"Identlock2-Test-Procedures\" -Unattended"
+    },
+    "1770271518957": {
+      "name": "build web api solution and select errors",
+      "content": "cd \"{{WEBAPI_DIR}}\" ; dotnet build \"src/IdentLock2 Web Api.sln\" -f net8.0 2>&1"
     }
   },
   "hotkey-scripts": {
