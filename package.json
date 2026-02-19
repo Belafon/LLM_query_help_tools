@@ -18,10 +18,13 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "dev": "concurrently \"npm run backend\" \"npm run frontend\" \"npm run launcher\"",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "dev:launcher": "concurrently \"npm run backend\" \"npm run frontend\" \"npm run launcher\"",
     "backend": "node backend/server.js",
     "frontend": "react-scripts start",
-    "launcher": "cd user_data && start \"\" \"launcher_gui.ahk\""
+    "launcher": "node scripts/launch-gui.js",
+    "launcher:windows": "cd user_data && start \"\" \"launcher_gui.ahk\"",
+    "launcher:linux": "cd user_data && ./launcher_gui.sh"
   },
   "eslintConfig": {
     "extends": [

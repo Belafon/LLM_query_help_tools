@@ -14,6 +14,11 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3001;
 
+// Cross-platform detection
+const isWindows = os.platform() === 'win32';
+const isLinux = os.platform() === 'linux';
+const isMac = os.platform() === 'darwin';
+
 // Ensure user_data directory exists
 const USER_DATA_DIR = path.join(__dirname, '..', 'user_data');
 const WORKSPACES_DIR = path.join(USER_DATA_DIR, 'workspaces');
@@ -161,7 +166,7 @@ app.get('/health', (req, res) => {
 app.post('/api/execute', async (req, res) => {
   console.log('Received /api/execute request');
   const { script, scriptName, restoreFocus, scriptBase64 } = req.body;
-  
+
   let scriptContent = script;
   if (scriptBase64) {
     try {
@@ -181,17 +186,33 @@ app.post('/api/execute', async (req, res) => {
   try {
     const sessionId = uuidv4();
     const processedScript = replacePathAliases(scriptContent);
-    
-    // Prepare focus restoration code
-    let focusRestoreCode = '';
-    if (restoreFocus) {
-      try {
-        const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
-        if (fs.existsSync(lastWindowFile)) {
-          const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
-          if (lastHwnd) {
-            console.log(`Preparing focus restore for HWND: ${lastHwnd}`);
-            focusRestoreCode = `
+
+    if (isWindows) {
+      // Windows-specific execution
+      await executeScriptWindows(sessionId, processedScript, scriptName, restoreFocus, res);
+    } else {
+      // Linux/Mac execution
+      await executeScriptUnix(sessionId, processedScript, scriptName, res);
+    }
+
+  } catch (error) {
+    console.error('Error executing script via HTTP:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Windows-specific script execution
+async function executeScriptWindows(sessionId, processedScript, scriptName, restoreFocus, res) {
+  // Prepare focus restoration code
+  let focusRestoreCode = '';
+  if (restoreFocus) {
+    try {
+      const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
+      if (fs.existsSync(lastWindowFile)) {
+        const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
+        if (lastHwnd) {
+          console.log(`Preparing focus restore for HWND: ${lastHwnd}`);
+          focusRestoreCode = `
     # Restore focus to previous window
     try {
         $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);'
@@ -203,20 +224,20 @@ app.post('/api/execute', async (req, res) => {
         Write-Host "Failed to restore focus: $_" -ForegroundColor DarkGray
     }
 `;
-          }
         }
-      } catch (e) {
-        console.error('Error preparing focus restore:', e);
       }
+    } catch (e) {
+      console.error('Error preparing focus restore:', e);
     }
+  }
 
-    const tempDir = os.tmpdir();
-    const scriptFileName = `ps_script_${sessionId}.ps1`;
-    const batchFileName = `run_script_${sessionId}.bat`;
-    const scriptPath = path.join(tempDir, scriptFileName);
-    const batchPath = path.join(tempDir, batchFileName);
+  const tempDir = os.tmpdir();
+  const scriptFileName = `ps_script_${sessionId}.ps1`;
+  const batchFileName = `run_script_${sessionId}.bat`;
+  const scriptPath = path.join(tempDir, scriptFileName);
+  const batchPath = path.join(tempDir, batchFileName);
 
-    const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
+  const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
 $Host.UI.RawUI.WindowTitle = "PowerShell Manager - ${scriptName || 'Unnamed Script'}"
 try {
 ${processedScript}
@@ -229,36 +250,206 @@ Write-Host "Press any key to close..." -ForegroundColor Yellow
 try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host "Press Enter" }
 `;
 
-    const batchContent = `@echo off
+  const batchContent = `@echo off
 title PowerShell Manager - ${scriptName || 'Unnamed Script'}
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"
 `;
 
-    fs.writeFileSync(scriptPath, psScript, 'utf8');
-    fs.writeFileSync(batchPath, batchContent, 'utf8');
+  fs.writeFileSync(scriptPath, psScript, 'utf8');
+  fs.writeFileSync(batchPath, batchContent, 'utf8');
 
-    console.log(`Spawning batch file: ${batchPath}`);
-    const psProcess = spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', batchPath], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    
+  console.log(`Spawning batch file: ${batchPath}`);
+  const psProcess = spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', batchPath], {
+    detached: true,
+    stdio: 'ignore'
+  });
+
+  setTimeout(() => {
+    try {
+      if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
+      if (fs.existsSync(batchPath)) fs.unlinkSync(batchPath);
+    } catch (e) {}
+  }, 60000);
+
+  psProcess.unref();
+  res.json({ success: true, message: 'Script started' });
+}
+
+// Linux/Mac script execution
+async function executeScriptUnix(sessionId, processedScript, scriptName, res) {
+  const tempDir = os.tmpdir();
+  const scriptFileName = `ps_script_${sessionId}.ps1`;
+  const shellFileName = `run_script_${sessionId}.sh`;
+  const scriptPath = path.join(tempDir, scriptFileName);
+  const shellPath = path.join(tempDir, shellFileName);
+
+  // Check if pwsh (PowerShell Core) is available
+  const pwshAvailable = await checkCommandExists('pwsh');
+
+  if (pwshAvailable) {
+    // Use PowerShell Core on Linux
+    const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
+Write-Host "PowerShell Manager - ${scriptName || 'Unnamed Script'}" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
+try {
+${processedScript}
+    Write-Host "=== Completed ===" -ForegroundColor Green
+} catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+}
+Write-Host "Press Enter to close..." -ForegroundColor Yellow
+Read-Host
+`;
+
+    const shellContent = `#!/bin/bash
+# PowerShell Manager - ${scriptName || 'Unnamed Script'}
+pwsh -NoProfile -File "${scriptPath}"
+`;
+
+    fs.writeFileSync(scriptPath, psScript, 'utf8');
+    fs.writeFileSync(shellPath, shellContent, { mode: 0o755, encoding: 'utf8' });
+
+    // Try to launch in a new terminal window
+    const terminalProcess = launchInTerminal(shellPath, scriptName);
+
     setTimeout(() => {
       try {
         if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
-        if (fs.existsSync(batchPath)) fs.unlinkSync(batchPath);
+        if (fs.existsSync(shellPath)) fs.unlinkSync(shellPath);
       } catch (e) {}
     }, 60000);
 
-    psProcess.unref();
+    if (terminalProcess) {
+      terminalProcess.unref();
+    }
+    res.json({ success: true, message: 'Script started with PowerShell Core' });
+  } else {
+    // Fallback: convert PowerShell script to bash (basic translation for simple scripts)
+    const bashScript = convertPowerShellToBash(processedScript, scriptName);
 
-    res.json({ success: true, message: 'Script started' });
+    fs.writeFileSync(shellPath, bashScript, { mode: 0o755, encoding: 'utf8' });
 
-  } catch (error) {
-    console.error('Error executing script via HTTP:', error);
-    res.status(500).json({ error: error.message });
+    const terminalProcess = launchInTerminal(shellPath, scriptName);
+
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(shellPath)) fs.unlinkSync(shellPath);
+      } catch (e) {}
+    }, 60000);
+
+    if (terminalProcess) {
+      terminalProcess.unref();
+    }
+    res.json({ success: true, message: 'Script started (converted to bash - pwsh not available)' });
   }
-});
+}
+
+// Check if a command exists
+function checkCommandExists(command) {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    exec(`which ${command}`, (error) => {
+      resolve(!error);
+    });
+  });
+}
+
+// Launch script in a terminal emulator
+function launchInTerminal(scriptPath, scriptName) {
+  const title = `PowerShell Manager - ${scriptName || 'Unnamed Script'}`;
+
+  // Try various terminal emulators in order of preference
+  const terminals = [
+    // GNOME Terminal
+    { cmd: 'gnome-terminal', args: ['--title', title, '--', scriptPath] },
+    // Konsole (KDE)
+    { cmd: 'konsole', args: ['--title', title, '-e', scriptPath] },
+    // xfce4-terminal
+    { cmd: 'xfce4-terminal', args: ['--title', title, '-e', scriptPath] },
+    // xterm
+    { cmd: 'xterm', args: ['-title', title, '-e', scriptPath] },
+    // mate-terminal
+    { cmd: 'mate-terminal', args: ['--title', title, '-e', scriptPath] },
+    // tilix
+    { cmd: 'tilix', args: ['-t', title, '-e', scriptPath] },
+    // alacritty
+    { cmd: 'alacritty', args: ['--title', title, '-e', scriptPath] },
+    // kitty
+    { cmd: 'kitty', args: ['--title', title, scriptPath] },
+    // macOS Terminal
+    { cmd: 'open', args: ['-a', 'Terminal', scriptPath] },
+  ];
+
+  for (const term of terminals) {
+    try {
+      const process = spawn(term.cmd, term.args, {
+        detached: true,
+        stdio: 'ignore'
+      });
+      console.log(`Launched in terminal: ${term.cmd}`);
+      return process;
+    } catch (e) {
+      // Try next terminal
+    }
+  }
+
+  // Fallback: run directly without terminal (output won't be visible)
+  console.log('No terminal emulator found, running script directly');
+  const process = spawn(scriptPath, [], {
+    detached: true,
+    stdio: 'ignore'
+  });
+  return process;
+}
+
+// Basic PowerShell to Bash conversion (for simple scripts)
+function convertPowerShellToBash(psScript, scriptName) {
+  let bashScript = `#!/bin/bash
+# PowerShell Manager - ${scriptName || 'Unnamed Script'}
+# Note: This script was auto-converted from PowerShell. Complex PS commands may not work.
+echo "PowerShell Manager - ${scriptName || 'Unnamed Script'}"
+echo "==================================================="
+echo ""
+
+`;
+
+  // Basic conversions
+  let converted = psScript
+    // Write-Host -> echo
+    .replace(/Write-Host\s+"([^"]+)"(?:\s+-ForegroundColor\s+\w+)?/gi, 'echo "$1"')
+    .replace(/Write-Host\s+'([^']+)'(?:\s+-ForegroundColor\s+\w+)?/gi, "echo '$1'")
+    // Write-Output -> echo
+    .replace(/Write-Output\s+"([^"]+)"/gi, 'echo "$1"')
+    .replace(/Write-Output\s+'([^']+)'/gi, "echo '$1'")
+    // Set-Location / cd
+    .replace(/Set-Location\s+["']?([^"'\s]+)["']?/gi, 'cd "$1"')
+    // Get-Location -> pwd
+    .replace(/Get-Location/gi, 'pwd')
+    // Get-ChildItem -> ls
+    .replace(/Get-ChildItem(?:\s+-Path)?\s+["']?([^"'\s|]+)["']?/gi, 'ls -la "$1"')
+    .replace(/Get-ChildItem/gi, 'ls -la')
+    // Remove-Item -> rm
+    .replace(/Remove-Item\s+-Recurse\s+-Force\s+["']?([^"'\s]+)["']?/gi, 'rm -rf "$1"')
+    .replace(/Remove-Item\s+["']?([^"'\s]+)["']?/gi, 'rm "$1"')
+    // Copy-Item -> cp
+    .replace(/Copy-Item\s+["']?([^"'\s]+)["']?\s+["']?([^"'\s]+)["']?/gi, 'cp "$1" "$2"')
+    // New-Item -ItemType Directory -> mkdir
+    .replace(/New-Item\s+-ItemType\s+Directory\s+-Path\s+["']?([^"'\s]+)["']?/gi, 'mkdir -p "$1"')
+    // $env:VAR -> $VAR
+    .replace(/\$env:(\w+)/gi, '$$1')
+    // Comments
+    .replace(/^(\s*)#/gm, '$1#');
+
+  bashScript += converted;
+  bashScript += `
+echo ""
+echo "=== Completed ==="
+echo "Press Enter to close..."
+read
+`;
+
+  return bashScript;
+}
 
 // Store running AutoHotkey processes
 const runningAHKScripts = new Map(); // scriptId -> { process, scriptPath }
@@ -625,22 +816,39 @@ async function handleScriptExecution(ws, data) {
       message: `Opening new console window for "${scriptName || 'Unnamed Script'}"`
     }));
 
-    // Create temporary files
-    const tempDir = os.tmpdir();
-    const scriptFileName = `ps_script_${sessionId}.ps1`;
-    const batchFileName = `run_script_${sessionId}.bat`;
-    const scriptPath = path.join(tempDir, scriptFileName);
-    const batchPath = path.join(tempDir, batchFileName);
+    if (isWindows) {
+      await handleScriptExecutionWindows(ws, sessionId, processedScript, scriptName, restoreFocus);
+    } else {
+      await handleScriptExecutionUnix(ws, sessionId, processedScript, scriptName);
+    }
 
-    // Prepare focus restoration code
-    let focusRestoreCode = '';
-    if (restoreFocus) {
-      try {
-        const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
-        if (fs.existsSync(lastWindowFile)) {
-          const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
-          if (lastHwnd) {
-            focusRestoreCode = `
+  } catch (error) {
+    console.error('Error executing script:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      sessionId,
+      message: `Execution error: ${error.message}`
+    }));
+  }
+}
+
+// Windows-specific WebSocket script execution
+async function handleScriptExecutionWindows(ws, sessionId, processedScript, scriptName, restoreFocus) {
+  const tempDir = os.tmpdir();
+  const scriptFileName = `ps_script_${sessionId}.ps1`;
+  const batchFileName = `run_script_${sessionId}.bat`;
+  const scriptPath = path.join(tempDir, scriptFileName);
+  const batchPath = path.join(tempDir, batchFileName);
+
+  // Prepare focus restoration code
+  let focusRestoreCode = '';
+  if (restoreFocus) {
+    try {
+      const lastWindowFile = path.join(USER_DATA_DIR, 'last_active_window.txt');
+      if (fs.existsSync(lastWindowFile)) {
+        const lastHwnd = fs.readFileSync(lastWindowFile, 'utf8').trim();
+        if (lastHwnd) {
+          focusRestoreCode = `
     # Restore focus to previous window
     try {
         $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);'
@@ -652,15 +860,15 @@ async function handleScriptExecution(ws, data) {
         Write-Host "Failed to restore focus: $_" -ForegroundColor DarkGray
     }
 `;
-          }
         }
-      } catch (e) {
-        console.error('Error preparing focus restore:', e);
       }
+    } catch (e) {
+      console.error('Error preparing focus restore:', e);
     }
+  }
 
-    // Create PowerShell script with proper formatting
-    const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
+  // Create PowerShell script with proper formatting
+  const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
 # Generated by PowerShell Manager
 $Host.UI.RawUI.WindowTitle = "PowerShell Manager - ${scriptName || 'Unnamed Script'}"
 
@@ -691,8 +899,8 @@ try {
 }
 `;
 
-    // Create diagnostic batch file
-    const batchContent = `@echo off
+  // Create diagnostic batch file
+  const batchContent = `@echo off
 title PowerShell Manager - ${scriptName || 'Unnamed Script'}
 echo ========================================
 echo PowerShell Manager Debug Information
@@ -706,7 +914,7 @@ echo.
 echo Checking if PowerShell script exists...
 if exist "${scriptPath}" (
     echo ✓ PowerShell script file exists
-    echo File size: 
+    echo File size:
     dir "${scriptPath}" | findstr ".ps1"
 ) else (
     echo ✗ PowerShell script file NOT found!
@@ -725,50 +933,134 @@ echo.
 pause
 `;
 
-    // Write both files
+  // Write both files
+  fs.writeFileSync(scriptPath, psScript, 'utf8');
+  fs.writeFileSync(batchPath, batchContent, 'utf8');
+
+  // Log the file paths for debugging
+  console.log('Created PowerShell script:', scriptPath);
+  console.log('Created batch file:', batchPath);
+
+  // Launch batch file in a new console window with debugging
+  const psProcess = spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', batchPath], {
+    detached: true,
+    stdio: 'ignore'
+  });
+
+  // Clean up the temporary files after a delay
+  setTimeout(() => {
+    try {
+      if (fs.existsSync(scriptPath)) {
+        fs.unlinkSync(scriptPath);
+      }
+      if (fs.existsSync(batchPath)) {
+        fs.unlinkSync(batchPath);
+      }
+    } catch (error) {
+      console.log('Note: Could not clean up temporary files:', error.message);
+    }
+  }, 60000);
+
+  psProcess.unref();
+
+  // Send completion message immediately
+  ws.send(JSON.stringify({
+    type: 'execution_complete',
+    sessionId,
+    message: `Script launched in new console window. The window will close automatically when completed.`
+  }));
+}
+
+// Unix (Linux/Mac) WebSocket script execution
+async function handleScriptExecutionUnix(ws, sessionId, processedScript, scriptName) {
+  const tempDir = os.tmpdir();
+  const scriptFileName = `ps_script_${sessionId}.ps1`;
+  const shellFileName = `run_script_${sessionId}.sh`;
+  const scriptPath = path.join(tempDir, scriptFileName);
+  const shellPath = path.join(tempDir, shellFileName);
+
+  // Check if pwsh (PowerShell Core) is available
+  const pwshAvailable = await checkCommandExists('pwsh');
+
+  if (pwshAvailable) {
+    // Use PowerShell Core on Linux
+    const psScript = `# PowerShell Script: ${scriptName || 'Unnamed Script'}
+# Generated by PowerShell Manager
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host "PowerShell Manager - Executing: ${scriptName || 'Unnamed Script'}" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host ""
+
+try {
+    # User script starts here
+${processedScript}
+    # User script ends here
+    Write-Host ""
+    Write-Host "=== Script execution completed successfully ===" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "=== Error occurred during script execution ===" -ForegroundColor Red
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+Read-Host
+`;
+
+    const shellContent = `#!/bin/bash
+# PowerShell Manager - ${scriptName || 'Unnamed Script'}
+pwsh -NoProfile -File "${scriptPath}"
+`;
+
     fs.writeFileSync(scriptPath, psScript, 'utf8');
-    fs.writeFileSync(batchPath, batchContent, 'utf8');
+    fs.writeFileSync(shellPath, shellContent, { mode: 0o755, encoding: 'utf8' });
 
-    // Log the file paths for debugging
     console.log('Created PowerShell script:', scriptPath);
-    console.log('Created batch file:', batchPath);
-    console.log('Script content preview:', script.substring(0, 100) + '...');
+    console.log('Created shell launcher:', shellPath);
 
-    // Launch batch file in a new console window with debugging
-    const psProcess = spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', batchPath], {
-      detached: true,
-      stdio: 'ignore'
-    });
+    const terminalProcess = launchInTerminal(shellPath, scriptName);
 
-    // Clean up the temporary files after a delay
     setTimeout(() => {
       try {
-        if (fs.existsSync(scriptPath)) {
-          fs.unlinkSync(scriptPath);
-        }
-        if (fs.existsSync(batchPath)) {
-          fs.unlinkSync(batchPath);
-        }
-      } catch (error) {
-        console.log('Note: Could not clean up temporary files:', error.message);
-      }
-    }, 60000); // Increased to 60 seconds for debugging
+        if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
+        if (fs.existsSync(shellPath)) fs.unlinkSync(shellPath);
+      } catch (e) {}
+    }, 60000);
 
-    psProcess.unref(); // Allow the process to run independently
+    if (terminalProcess) {
+      terminalProcess.unref();
+    }
 
-    // Send completion message immediately
     ws.send(JSON.stringify({
       type: 'execution_complete',
       sessionId,
-      message: `Script launched in new console window. The window will close automatically when completed.`
+      message: `Script launched with PowerShell Core. The window will close when completed.`
     }));
+  } else {
+    // Fallback: convert PowerShell script to bash
+    const bashScript = convertPowerShellToBash(processedScript, scriptName);
 
-  } catch (error) {
-    console.error('Error executing script:', error);
+    fs.writeFileSync(shellPath, bashScript, { mode: 0o755, encoding: 'utf8' });
+
+    console.log('Created bash script (converted from PS):', shellPath);
+
+    const terminalProcess = launchInTerminal(shellPath, scriptName);
+
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(shellPath)) fs.unlinkSync(shellPath);
+      } catch (e) {}
+    }, 60000);
+
+    if (terminalProcess) {
+      terminalProcess.unref();
+    }
+
     ws.send(JSON.stringify({
-      type: 'error',
+      type: 'execution_complete',
       sessionId,
-      message: `Execution error: ${error.message}`
+      message: `Script launched (converted to bash - pwsh not available). Some PowerShell features may not work.`
     }));
   }
 }
