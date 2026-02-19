@@ -49,6 +49,7 @@ const Sidebar = ({ pages }) => {
       'Hotkey Manager': '⌨️',
       'Workspaces': '📁',
       'Path Manager': '🔗',
+      'Secret Manager': '🔐',
       'Settings': '⚙️',
       // Add more icons as you add more pages
     };

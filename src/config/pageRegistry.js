@@ -3,6 +3,7 @@ import PowerShellManager from '../pages/PowerShellManager';
 import HotkeyManager from '../pages/HotkeyManager';
 import WorkspaceManager from '../pages/WorkspaceManager';
 import PathManager from '../pages/PathManager';
+import SecretManager from '../pages/SecretManager';
 
 // Central registry of all pages
 const pageRegistry = [
@@ -30,6 +31,11 @@ const pageRegistry = [
     path: '/hotkeys',
     name: 'Hotkey Manager',
     component: HotkeyManager,
+  },
+  {
+    path: '/secrets',
+    name: 'Secret Manager',
+    component: SecretManager,
   },
   // Add more pages here as you create them
   // Example:

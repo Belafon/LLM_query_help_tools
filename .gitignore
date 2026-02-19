@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Secrets - actual secret values are stored here (never committed)
+/user_data/secrets/
+
 # dependencies
 /node_modules
 /.pnp

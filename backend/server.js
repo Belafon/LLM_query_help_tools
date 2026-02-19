@@ -19,9 +19,17 @@ const USER_DATA_DIR = path.join(__dirname, '..', 'user_data');
 const WORKSPACES_DIR = path.join(USER_DATA_DIR, 'workspaces');
 const SETTINGS_FILE = path.join(USER_DATA_DIR, 'settings.json');
 const GLOBAL_PATHS_FILE = path.join(USER_DATA_DIR, 'global_paths.json');
+const SECRET_KEYS_FILE = path.join(USER_DATA_DIR, 'secret_keys.json');
+const SECRETS_DIR = path.join(USER_DATA_DIR, 'secrets');
+const SECRET_VALUES_FILE = path.join(SECRETS_DIR, 'values.json');
 
 if (!fs.existsSync(WORKSPACES_DIR)) {
   fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
+}
+
+// Ensure secrets directory exists
+if (!fs.existsSync(SECRETS_DIR)) {
+  fs.mkdirSync(SECRETS_DIR, { recursive: true });
 }
 
 // Default workspace setup
@@ -59,6 +67,36 @@ function getGlobalPaths() {
     }
   }
   return [];
+}
+
+function getSecretKeys() {
+  if (fs.existsSync(SECRET_KEYS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(SECRET_KEYS_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Error loading secret keys:', e);
+    }
+  }
+  return [];
+}
+
+function getSecretValues() {
+  if (fs.existsSync(SECRET_VALUES_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(SECRET_VALUES_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Error loading secret values:', e);
+    }
+  }
+  return {};
+}
+
+function saveSecretKeys(keys) {
+  fs.writeFileSync(SECRET_KEYS_FILE, JSON.stringify(keys, null, 2), 'utf8');
+}
+
+function saveSecretValues(values) {
+  fs.writeFileSync(SECRET_VALUES_FILE, JSON.stringify(values, null, 2), 'utf8');
 }
 
 app.use(cors());
@@ -339,15 +377,16 @@ function findAutoHotkeyExecutable() {
 }
 
 /**
- * Replaces path aliases in the form of {{ALIAS}} with their actual paths
- * defined in the current workspace.
+ * Replaces path aliases and secrets in the form of {{ALIAS}} with their actual values.
+ * Path aliases are defined globally, secrets are stored locally (not in git).
  */
 function replacePathAliases(scriptContent) {
   try {
     const paths = getGlobalPaths();
+    const secretValues = getSecretValues();
 
     let processedContent = scriptContent;
-    
+
     // Handle paths if it's an array (new format)
     if (Array.isArray(paths)) {
       paths.forEach(p => {
@@ -358,13 +397,24 @@ function replacePathAliases(scriptContent) {
           processedContent = processedContent.replace(regex, () => p.path);
         }
       });
-    } 
+    }
     // Handle paths if it's an object (legacy/alternative format)
     else if (typeof paths === 'object') {
       for (const [alias, actualPath] of Object.entries(paths)) {
         const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`{{${escapedAlias}}}`, 'g');
         processedContent = processedContent.replace(regex, () => actualPath);
+      }
+    }
+
+    // Replace secrets
+    if (secretValues && typeof secretValues === 'object') {
+      for (const [key, value] of Object.entries(secretValues)) {
+        if (value) {
+          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`{{${escapedKey}}}`, 'g');
+          processedContent = processedContent.replace(regex, () => value);
+        }
       }
     }
 
@@ -527,6 +577,18 @@ wss.on('connection', (ws) => {
           break;
         case 'rename_path_alias':
           handleRenamePathAlias(ws, data);
+          break;
+        case 'load_secrets':
+          handleLoadSecrets(ws);
+          break;
+        case 'add_secret_key':
+          handleAddSecretKey(ws, data);
+          break;
+        case 'save_secret_value':
+          handleSaveSecretValue(ws, data);
+          break;
+        case 'delete_secret_key':
+          handleDeleteSecretKey(ws, data);
           break;
         default:
           ws.send(JSON.stringify({
@@ -983,23 +1045,150 @@ function handleSwitchWorkspace(ws, data) {
 function handleDeleteWorkspace(ws, data) {
   const { name } = data;
   if (!name || name === DEFAULT_WS_NAME) return;
-  
+
   try {
     const wsDir = path.join(WORKSPACES_DIR, name);
     if (fs.existsSync(wsDir)) {
       // Simple recursive delete
       fs.rmSync(wsDir, { recursive: true, force: true });
       console.log(`Deleted workspace: ${name}`);
-      
+
       if (settings.currentWorkspace === name) {
         settings.currentWorkspace = DEFAULT_WS_NAME;
         fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
       }
-      
+
       handleListWorkspaces(ws);
     }
   } catch (error) {
     console.error('Error deleting workspace:', error);
+  }
+}
+
+// Secret management handlers
+function handleLoadSecrets(ws) {
+  try {
+    const keys = getSecretKeys();
+    const values = getSecretValues();
+
+    // Merge keys with their values
+    const secrets = keys.map(keyObj => ({
+      key: keyObj.key,
+      description: keyObj.description || '',
+      value: values[keyObj.key] || ''
+    }));
+
+    ws.send(JSON.stringify({
+      type: 'secrets_data',
+      secrets: secrets
+    }));
+    console.log(`Sent ${secrets.length} secrets to client`);
+  } catch (error) {
+    console.error('Error loading secrets:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to load secrets: ${error.message}`
+    }));
+  }
+}
+
+function handleAddSecretKey(ws, data) {
+  const { key, description } = data;
+
+  if (!key) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Secret key name is required' }));
+    return;
+  }
+
+  try {
+    const keys = getSecretKeys();
+
+    // Check if key already exists
+    if (keys.some(k => k.key === key)) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Secret key already exists' }));
+      return;
+    }
+
+    // Add new key
+    keys.push({ key, description: description || '' });
+    saveSecretKeys(keys);
+
+    // Initialize empty value for the key
+    const values = getSecretValues();
+    values[key] = '';
+    saveSecretValues(values);
+
+    console.log(`Added secret key: ${key}`);
+    ws.send(JSON.stringify({
+      type: 'secret_key_added',
+      message: `Secret key "${key}" added successfully`
+    }));
+  } catch (error) {
+    console.error('Error adding secret key:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to add secret key: ${error.message}`
+    }));
+  }
+}
+
+function handleSaveSecretValue(ws, data) {
+  const { key, value } = data;
+
+  if (!key) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Secret key is required' }));
+    return;
+  }
+
+  try {
+    const values = getSecretValues();
+    values[key] = value || '';
+    saveSecretValues(values);
+
+    console.log(`Saved value for secret: ${key}`);
+    ws.send(JSON.stringify({
+      type: 'secret_saved',
+      message: `Secret "${key}" saved successfully`
+    }));
+  } catch (error) {
+    console.error('Error saving secret value:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to save secret: ${error.message}`
+    }));
+  }
+}
+
+function handleDeleteSecretKey(ws, data) {
+  const { key } = data;
+
+  if (!key) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Secret key is required' }));
+    return;
+  }
+
+  try {
+    // Remove from keys file
+    let keys = getSecretKeys();
+    keys = keys.filter(k => k.key !== key);
+    saveSecretKeys(keys);
+
+    // Remove from values file
+    const values = getSecretValues();
+    delete values[key];
+    saveSecretValues(values);
+
+    console.log(`Deleted secret key: ${key}`);
+    ws.send(JSON.stringify({
+      type: 'secret_deleted',
+      message: `Secret "${key}" deleted successfully`
+    }));
+  } catch (error) {
+    console.error('Error deleting secret key:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: `Failed to delete secret: ${error.message}`
+    }));
   }
 }
 
