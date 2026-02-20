@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
+import { WEBSOCKET_URL } from '../config/backend';
 import './WorkspaceManager.css';
 
 const WorkspaceManager = () => {
@@ -10,7 +11,7 @@ const WorkspaceManager = () => {
 
   const connectToBackend = () => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {

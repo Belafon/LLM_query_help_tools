@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { WEBSOCKET_URL } from '../config/backend';
 import './PathManager.css';
 
 const PathManager = () => {
@@ -20,7 +21,7 @@ const PathManager = () => {
 
   const connectToBackend = useCallback(() => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { WEBSOCKET_URL } from '../config/backend';
 import './Launcher.css';
 
 const Launcher = () => {
@@ -13,7 +14,7 @@ const Launcher = () => {
   // Connect to WebSocket
   useEffect(() => {
     const connect = () => {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { WEBSOCKET_URL } from '../config/backend';
 import './HotkeyManager.css';
 
 const HotkeyManager = () => {
@@ -20,7 +21,7 @@ const HotkeyManager = () => {
 
   const connectToBackend = () => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -245,7 +246,7 @@ const HotkeyManager = () => {
     }
 
     if (backendStatus !== 'connected') {
-      alert('Backend service is not connected. Please make sure the backend is running on port 3001.');
+      alert('Backend service is not connected. Please make sure the backend is running on port 3456.');
       return;
     }
 

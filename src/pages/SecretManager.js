@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { WEBSOCKET_URL } from '../config/backend';
 import './SecretManager.css';
 
 const SecretManager = () => {
@@ -19,7 +20,7 @@ const SecretManager = () => {
 
   const connectToBackend = useCallback(() => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {

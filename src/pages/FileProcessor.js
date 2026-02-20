@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BACKEND_URL } from '../config/backend';
 import './FileProcessor.css';
 
 const FileProcessor = () => {
@@ -108,8 +109,7 @@ ${fileContent}
 
     if (pathsArray.length > 0) {
       try {
-        const backendHost = window.location.hostname || '127.0.0.1';
-        const response = await fetch(`http://${backendHost}:3001/api/read-files`, {
+        const response = await fetch(`${BACKEND_URL}/api/read-files`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

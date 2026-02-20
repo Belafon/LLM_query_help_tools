@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { WEBSOCKET_URL } from '../config/backend';
 import './Sidebar.css';
 
 const Sidebar = ({ pages }) => {
@@ -10,7 +11,7 @@ const Sidebar = ({ pages }) => {
 
   const connectToBackend = () => {
     try {
-      const ws = new WebSocket('ws://localhost:3001');
+      const ws = new WebSocket(WEBSOCKET_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
