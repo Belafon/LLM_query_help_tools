@@ -147,8 +147,10 @@ A Spotlight / Alfred-style overlay to search and execute scripts instantly.
 - Press **Escape** to close
 
 **System-wide launcher (optional):**
-- **Windows:** Run `user_data/launcher_gui.ahk` (requires AutoHotkey) — triggers with `Ctrl+F4`
+- Press **`Ctrl + F4`** from anywhere on your desktop to open the system launcher overlay (no need to focus the browser first)
+- **Windows:** Run `user_data/launcher_gui.ahk` (requires AutoHotkey) — the `Ctrl+F4` hotkey is registered system-wide
 - **Linux:** Set up `user_data/launcher_gui.sh` as a global keyboard shortcut — works with rofi, dmenu, zenity, or fzf
+- Type to search scripts, press **Enter** to execute
 - See [README_LAUNCHER.md](README_LAUNCHER.md) for detailed setup instructions
 
 ---
