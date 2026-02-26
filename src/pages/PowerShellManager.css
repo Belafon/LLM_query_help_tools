@@ -574,3 +574,38 @@
     padding: 20px;
   }
 }
+
+/* Platform Tabs */
+.platform-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border-bottom: 2px solid #404040;
+}
+
+.platform-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.platform-tab:hover {
+  color: #e0e0e0;
+  background-color: #333;
+}
+
+.platform-tab.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+.platform-tab.active:hover {
+  color: #60a5fa;
+}
