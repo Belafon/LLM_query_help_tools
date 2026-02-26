@@ -11,6 +11,7 @@ const PathManager = () => {
   const [backendStatus, setBackendStatus] = useState('disconnected');
   const [editingAlias, setEditingAlias] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editPathValue, setEditPathValue] = useState('');
   const wsRef = useRef(null);
 
   const showStatus = (type, message) => {
@@ -121,34 +122,67 @@ const PathManager = () => {
   };
 
   const handleStartRename = (alias) => {
+    const pathObj = paths.find(p => p.alias === alias);
     setEditingAlias(alias);
     setEditValue(alias);
+    setEditPathValue(pathObj ? pathObj.path : '');
   };
 
   const handleCancelRename = () => {
     setEditingAlias(null);
     setEditValue('');
+    setEditPathValue('');
   };
 
   const handleConfirmRename = (oldAlias) => {
     const cleanNewAlias = editValue.replace(/[{}]/g, '').toUpperCase();
+    const oldPath = paths.find(p => p.alias === oldAlias)?.path || '';
+    const aliasChanged = cleanNewAlias !== oldAlias;
+    const pathChanged = editPathValue !== oldPath;
     
     if (!cleanNewAlias) {
       showStatus('error', 'Alias name cannot be empty');
       return;
     }
 
-    if (cleanNewAlias === oldAlias) {
+    if (!editPathValue) {
+      showStatus('error', 'Path cannot be empty');
+      return;
+    }
+
+    if (!aliasChanged && !pathChanged) {
       setEditingAlias(null);
       return;
     }
 
-    if (paths.some(p => p.alias === cleanNewAlias)) {
+    if (aliasChanged && paths.some(p => p.alias === cleanNewAlias)) {
       showStatus('error', 'Alias already exists');
       return;
     }
 
     if (backendStatus === 'connected' && wsRef.current) {
+      // If only path changed, update locally and save
+      if (!aliasChanged && pathChanged) {
+        const updatedPaths = paths.map(p =>
+          p.alias === oldAlias ? { ...p, path: editPathValue } : p
+        );
+        setPaths(updatedPaths);
+        saveData(updatedPaths);
+        setEditingAlias(null);
+        setEditPathValue('');
+        return;
+      }
+
+      // If alias changed (with or without path change)
+      if (pathChanged) {
+        // Update path first locally, then rename alias on backend
+        const updatedPaths = paths.map(p =>
+          p.alias === oldAlias ? { ...p, path: editPathValue } : p
+        );
+        setPaths(updatedPaths);
+        saveData(updatedPaths);
+      }
+
       wsRef.current.send(JSON.stringify({
         type: 'rename_path_alias',
         oldAlias,
@@ -251,7 +285,18 @@ const PathManager = () => {
                     )}
                   </td>
                   <td className="usage-cell" data-label="Usage"><code>{"{{"}{p.alias}{"}}"}</code></td>
-                  <td className="path-cell" data-label="Target Path">{p.path}</td>
+                  <td className="path-cell" data-label="Target Path">
+                    {editingAlias === p.alias ? (
+                      <input
+                        type="text"
+                        className="edit-path-input"
+                        value={editPathValue}
+                        onChange={(e) => setEditPathValue(e.target.value)}
+                      />
+                    ) : (
+                      p.path
+                    )}
+                  </td>
                   <td className="actions-cell" data-label="Actions">
                     {editingAlias === p.alias ? (
                       <>
@@ -274,7 +319,7 @@ const PathManager = () => {
                           className="edit-btn"
                           onClick={() => handleStartRename(p.alias)}
                         >
-                          Rename
+                          Edit
                         </button>
                         <button 
                           className="delete-btn"
