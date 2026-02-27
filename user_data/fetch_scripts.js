@@ -62,12 +62,13 @@ try {
         console.log("---START---");
         for (const script of scriptArray) {
             const contentBase64 = Buffer.from(script.content || '').toString('base64');
-            // Output: ID|Name|Description|Base64Content
+            // Output: ID|Name|Description|Base64Content|RunInBackground
             // Sanitize Name and Description to remove pipes and newlines
             const name = (script.name || '').replace(/\|/g, '-').replace(/[\r\n]+/g, ' ');
             const desc = (script.description || '').replace(/\|/g, '-').replace(/[\r\n]+/g, ' ');
-            
-            console.log(`${script.id}|${name}|${desc}|${contentBase64}`);
+            const runInBackground = script.runInBackground ? '1' : '0';
+
+            console.log(`${script.id}|${name}|${desc}|${contentBase64}|${runInBackground}`);
         }
         console.log("---END---");
     }

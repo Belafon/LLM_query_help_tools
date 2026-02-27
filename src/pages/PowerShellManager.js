@@ -9,6 +9,7 @@ const PowerShellManager = () => {
   const [selectedScript, setSelectedScript] = useState(null);
   const [scriptContent, setScriptContent] = useState('');
   const [scriptName, setScriptName] = useState('');
+  const [runInBackground, setRunInBackground] = useState(false);
   const [output, setOutput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -164,6 +165,7 @@ const PowerShellManager = () => {
     setSelectedScript(null);
     setScriptName('');
     setScriptContent('');
+    setRunInBackground(false);
     setEditMode(true);
   };
 
@@ -173,6 +175,7 @@ const PowerShellManager = () => {
       setSelectedScript(scriptId);
       setScriptName(script.name);
       setScriptContent(script.content);
+      setRunInBackground(script.runInBackground || false);
       setCurrentView('edit');
       setEditMode(false);
       setOutput('');
@@ -190,7 +193,8 @@ const PowerShellManager = () => {
       ...scripts,
       [scriptId]: {
         name: scriptName.trim(),
-        content: scriptContent
+        content: scriptContent,
+        runInBackground: runInBackground
       }
     };
 
@@ -228,14 +232,16 @@ const PowerShellManager = () => {
     }
 
     setIsExecuting(true);
-    setOutput(`[${new Date().toLocaleTimeString()}] Executing "${script.name}"...\n`);
+    const bgMode = script.runInBackground ? ' (background)' : '';
+    setOutput(`[${new Date().toLocaleTimeString()}] Executing "${script.name}"${bgMode}...\n`);
     setCurrentSessionId(null);
 
     try {
       const message = {
         type: 'execute',
         script: script.content,
-        scriptName: script.name
+        scriptName: script.name,
+        runInBackground: script.runInBackground || false
       };
 
       wsRef.current.send(JSON.stringify(message));
@@ -257,16 +263,19 @@ const PowerShellManager = () => {
     }
 
     setIsExecuting(true);
-    setOutput(`[${new Date().toLocaleTimeString()}] Preparing to execute "${scriptName || 'Unnamed Script'}"...\n`);
+    const bgMode = runInBackground ? ' (background)' : '';
+    setOutput(`[${new Date().toLocaleTimeString()}] Preparing to execute "${scriptName || 'Unnamed Script'}"${bgMode}...\n`);
 
     try {
       console.log('Sending script content:', scriptContent.substring(0, 200) + '...');
       console.log('Script name:', scriptName);
-      
+      console.log('Run in background:', runInBackground);
+
       const message = {
         type: 'execute',
         script: scriptContent,
-        scriptName: scriptName || 'Unnamed Script'
+        scriptName: scriptName || 'Unnamed Script',
+        runInBackground: runInBackground
       };
 
       wsRef.current.send(JSON.stringify(message));
@@ -464,6 +473,24 @@ const PowerShellManager = () => {
               rows={15}
             />
           </div>
+
+          <div className="input-group checkbox-group">
+            <label htmlFor="runInBackground" className="checkbox-label">
+              <input
+                id="runInBackground"
+                type="checkbox"
+                checked={runInBackground}
+                onChange={(e) => setRunInBackground(e.target.checked)}
+                disabled={!editMode}
+              />
+              <span>Run in Background</span>
+            </label>
+            <span className="checkbox-hint">
+              {runInBackground
+                ? 'Script will run hidden and close automatically when finished'
+                : 'Script will open in a new PowerShell window (default)'}
+            </span>
+          </div>
         </div>
 
         {output && (
@@ -471,9 +498,14 @@ const PowerShellManager = () => {
             <h3>Execution Status:</h3>
             <pre className="output-content">{output}</pre>
             <div className="console-info">
-              <p><strong>💡 Note:</strong> Your PowerShell script is running in a separate console window. 
-              This allows for interactive input and better visibility. The console window will automatically 
-              close when the script completes, or you can close it manually.</p>
+              {runInBackground ? (
+                <p><strong>Note:</strong> Your PowerShell script is running in the background (hidden).
+                The script will close automatically when completed.</p>
+              ) : (
+                <p><strong>Note:</strong> Your PowerShell script is running in a separate console window.
+                This allows for interactive input and better visibility. The console window will automatically
+                close when the script completes, or you can close it manually.</p>
+              )}
             </div>
           </div>
         )}

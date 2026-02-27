@@ -3,7 +3,7 @@
 SetWorkingDir %A_ScriptDir%
 
 ; Configuration
-BackendUrl := "http://localhost:3001"
+BackendUrl := "http://localhost:3456"
 SettingsFile := "settings.json"
 WorkspacesDir := "workspaces"
 
@@ -141,7 +141,7 @@ LoadScripts() {
         Line := A_LoopField
         if (Line = "" || Line = "---START---" || Line = "---END---")
             continue
-            
+
         parts := StrSplit(Line, "|")
         if (parts.MaxIndex() >= 4)
         {
@@ -149,28 +149,30 @@ LoadScripts() {
             name := parts[2]
             desc := parts[3]
             contentBase64 := parts[4]
-            
+            runInBackground := (parts.MaxIndex() >= 5 && parts[5] = "1") ? true : false
+
             ; Push to array instead of map
-            Scripts.Push({id: id, name: name, description: desc, contentBase64: contentBase64})
+            Scripts.Push({id: id, name: name, description: desc, contentBase64: contentBase64, runInBackground: runInBackground})
         }
     }
 }
 
 RunScript(scriptObj) {
     global BackendUrl
-    
+
     ; Log usage
     FileAppend, % A_Now . "|" . scriptObj.id . "`n", usage.log
-    
+
     ; Prepare JSON payload
     ; We send scriptBase64 instead of script content to avoid escaping issues
-    
+
     WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
     WebRequest.Open("POST", BackendUrl . "/api/execute", false)
     WebRequest.SetRequestHeader("Content-Type", "application/json")
-    
-    json := "{""scriptName"": """ . EscapeJSON(scriptObj.name) . """, ""scriptBase64"": """ . scriptObj.contentBase64 . """, ""restoreFocus"": true}"
-    
+
+    runInBg := scriptObj.runInBackground ? "true" : "false"
+    json := "{""scriptName"": """ . EscapeJSON(scriptObj.name) . """, ""scriptBase64"": """ . scriptObj.contentBase64 . """, ""restoreFocus"": true, ""runInBackground"": " . runInBg . "}"
+
     try {
         WebRequest.Send(json)
     } catch e {

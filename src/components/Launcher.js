@@ -127,9 +127,10 @@ const Launcher = () => {
         wsRef.current.send(JSON.stringify({
           type: 'execute',
           scriptId: script.id,
-          script: script.content, // Changed from script.script to script.content
+          script: script.content,
           scriptName: script.name,
-          restoreFocus: true 
+          restoreFocus: true,
+          runInBackground: script.runInBackground || false
         }));
       }
       setIsVisible(false);
