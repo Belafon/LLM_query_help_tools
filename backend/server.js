@@ -502,8 +502,15 @@ read
   return bashScript;
 }
 
-// Store running AutoHotkey processes
-const runningAHKScripts = new Map(); // scriptId -> { process, scriptPath }
+// Store running AutoHotkey / sxhkd scripts
+// Windows: scriptId -> { process, scriptPath }
+// Linux:   scriptId -> { fragmentPath }
+const runningAHKScripts = new Map();
+
+// Linux sxhkd management
+const SXHKD_CONFIG_DIR = path.join(os.tmpdir(), 'llm-tools-sxhkd-fragments');
+const SXHKD_COMPOSED_CONFIG = path.join(os.tmpdir(), 'llm-tools-sxhkdrc');
+let sxhkdDaemonProcess = null;
 
 /**
  * Check whether the given path points to an executable file or alias.
@@ -616,6 +623,178 @@ function findAutoHotkeyExecutable() {
   }
 
   return null;
+}
+
+/**
+ * Try to find the sxhkd executable on a Linux machine.
+ * Checks SXHKD_PATH env override, then PATH entries, then common locations.
+ * @returns {string|null} Full path to sxhkd or null if not found.
+ */
+function findSxhkdExecutable() {
+  const configuredPath = (process.env.SXHKD_PATH || '').trim();
+  if (configuredPath && pathPointsToExecutable(configuredPath)) {
+    return configuredPath;
+  }
+
+  if (process.env.PATH) {
+    for (const dir of process.env.PATH.split(path.delimiter)) {
+      const candidate = path.join(dir, 'sxhkd');
+      if (pathPointsToExecutable(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  const commonPaths = ['/usr/bin/sxhkd', '/usr/local/bin/sxhkd', '/usr/sbin/sxhkd'];
+  for (const p of commonPaths) {
+    if (pathPointsToExecutable(p)) return p;
+  }
+
+  return null;
+}
+
+/**
+ * Read all sxhkd fragment files and compose them into a single config file.
+ * @returns {number} Number of active fragments.
+ */
+function composeSxhkdConfig() {
+  if (!fs.existsSync(SXHKD_CONFIG_DIR)) {
+    fs.mkdirSync(SXHKD_CONFIG_DIR, { recursive: true });
+  }
+
+  const fragments = fs.readdirSync(SXHKD_CONFIG_DIR)
+    .filter(f => f.startsWith('fragment_') && f.endsWith('.conf'))
+    .sort();
+
+  let composed = '# Auto-generated sxhkd config - DO NOT EDIT MANUALLY\n';
+  composed += '# Managed by LLM Query Help Tools\n\n';
+
+  for (const frag of fragments) {
+    const content = fs.readFileSync(path.join(SXHKD_CONFIG_DIR, frag), 'utf8');
+    const scriptId = frag.replace('fragment_', '').replace('.conf', '');
+    composed += `# --- Script: ${scriptId} ---\n`;
+    composed += content + '\n\n';
+  }
+
+  fs.writeFileSync(SXHKD_COMPOSED_CONFIG, composed, 'utf8');
+  return fragments.length;
+}
+
+/**
+ * Start the sxhkd daemon process.
+ */
+function startSxhkdDaemon(sxhkdPath, ws = null) {
+  sxhkdDaemonProcess = spawn(sxhkdPath, ['-c', SXHKD_COMPOSED_CONFIG], {
+    detached: false,
+    stdio: 'ignore'
+  });
+
+  sxhkdDaemonProcess.on('exit', (code) => {
+    console.log(`sxhkd daemon exited with code ${code}`);
+    sxhkdDaemonProcess = null;
+  });
+
+  sxhkdDaemonProcess.on('error', (err) => {
+    console.error('sxhkd daemon error:', err.message);
+    sxhkdDaemonProcess = null;
+  });
+
+  console.log(`Started sxhkd daemon (PID: ${sxhkdDaemonProcess.pid}) with config: ${SXHKD_COMPOSED_CONFIG}`);
+}
+
+/**
+ * Stop the sxhkd daemon process if running.
+ */
+function stopSxhkdDaemon() {
+  if (sxhkdDaemonProcess && !sxhkdDaemonProcess.killed) {
+    try {
+      sxhkdDaemonProcess.kill();
+    } catch (e) {
+      console.log('Error stopping sxhkd daemon:', e.message);
+    }
+    sxhkdDaemonProcess = null;
+  }
+}
+
+/**
+ * Compose the sxhkd config from fragments and reload or start the daemon.
+ * If no fragments remain, the daemon is stopped.
+ * @returns {boolean} true if successful.
+ */
+function reloadOrStartSxhkd(ws = null) {
+  const sxhkdPath = findSxhkdExecutable();
+  if (!sxhkdPath) {
+    const msg = 'sxhkd executable not found. Install sxhkd (sudo apt install sxhkd) or set SXHKD_PATH.';
+    console.error(msg);
+    if (ws) ws.send(JSON.stringify({ type: 'error', message: msg }));
+    return false;
+  }
+
+  const fragmentCount = composeSxhkdConfig();
+
+  if (fragmentCount === 0) {
+    stopSxhkdDaemon();
+    return true;
+  }
+
+  if (sxhkdDaemonProcess && !sxhkdDaemonProcess.killed) {
+    try {
+      process.kill(sxhkdDaemonProcess.pid, 'SIGUSR1');
+      console.log('Sent SIGUSR1 to sxhkd to reload config');
+    } catch (e) {
+      console.error('Failed to signal sxhkd, restarting:', e.message);
+      stopSxhkdDaemon();
+      startSxhkdDaemon(sxhkdPath, ws);
+    }
+  } else {
+    startSxhkdDaemon(sxhkdPath, ws);
+  }
+  return true;
+}
+
+/**
+ * Write script content as an sxhkd config fragment and reload the daemon.
+ */
+async function runSxhkdFragment(scriptId, processedScript, scriptName, ws) {
+  if (!fs.existsSync(SXHKD_CONFIG_DIR)) {
+    fs.mkdirSync(SXHKD_CONFIG_DIR, { recursive: true });
+  }
+
+  const fragmentPath = path.join(SXHKD_CONFIG_DIR, `fragment_${scriptId}.conf`);
+  fs.writeFileSync(fragmentPath, processedScript, 'utf8');
+  console.log('Created sxhkd fragment:', fragmentPath);
+
+  runningAHKScripts.set(scriptId, { fragmentPath: fragmentPath });
+
+  const success = reloadOrStartSxhkd(ws);
+
+  if (success && ws) {
+    ws.send(JSON.stringify({
+      type: 'ahk_start',
+      scriptId: scriptId,
+      message: `Script "${scriptName}" activated (sxhkd reloaded).`
+    }));
+  }
+}
+
+/**
+ * Clean up stale sxhkd fragment files from previous crashes.
+ */
+function cleanupStaleSxhkdFragments() {
+  try {
+    if (fs.existsSync(SXHKD_CONFIG_DIR)) {
+      const files = fs.readdirSync(SXHKD_CONFIG_DIR);
+      for (const f of files) {
+        fs.unlinkSync(path.join(SXHKD_CONFIG_DIR, f));
+      }
+      console.log(`Cleaned up ${files.length} stale sxhkd fragment(s).`);
+    }
+    if (fs.existsSync(SXHKD_COMPOSED_CONFIG)) {
+      fs.unlinkSync(SXHKD_COMPOSED_CONFIG);
+    }
+  } catch (e) {
+    console.log('Error cleaning up stale sxhkd fragments:', e.message);
+  }
 }
 
 /**
@@ -775,7 +954,14 @@ async function handleRenamePathAlias(ws, data) {
 // WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('Client connected');
-  
+
+  // Send platform info so frontend can adapt labels/placeholders
+  ws.send(JSON.stringify({
+    type: 'platform_info',
+    platform: os.platform(),
+    hotkeyEngine: isWindows ? 'autohotkey' : (isLinux ? 'sxhkd' : 'none')
+  }));
+
   ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message);
@@ -1253,7 +1439,7 @@ pwsh -NoProfile -File "${scriptPath}"
   }
 }
 
-// AutoHotkey script handlers
+// AutoHotkey / sxhkd script handlers
 async function runAHKScriptInternal(scriptId, scriptContent, scriptName, ws = null) {
   try {
     // Replace path aliases before execution
@@ -1272,75 +1458,75 @@ async function runAHKScriptInternal(scriptId, scriptContent, scriptName, ws = nu
       return;
     }
 
-    // Find AutoHotkey executable
-    const ahkPath = findAutoHotkeyExecutable();
+    if (isLinux) {
+      // Linux: sxhkd fragment-based approach
+      await runSxhkdFragment(scriptId, processedScript, scriptName, ws);
+    } else {
+      // Windows: AutoHotkey approach
+      const ahkPath = findAutoHotkeyExecutable();
 
-    if (!ahkPath) {
-      const msg = 'AutoHotkey executable not found. Install AutoHotkey or set AUTOHOTKEY_PATH to the executable.';
-      console.error(msg);
+      if (!ahkPath) {
+        const msg = 'AutoHotkey executable not found. Install AutoHotkey or set AUTOHOTKEY_PATH to the executable.';
+        console.error(msg);
+        if (ws) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: msg
+          }));
+        }
+        return;
+      }
+
+      // Create temporary script file
+      const tempDir = os.tmpdir();
+      const scriptFileName = `ahk_script_${scriptId}.ahk`;
+      const scriptPath = path.join(tempDir, scriptFileName);
+
+      fs.writeFileSync(scriptPath, processedScript, 'utf8');
+      console.log('Created AutoHotkey script:', scriptPath);
+
+      const ahkProcess = spawn(ahkPath, [scriptPath], {
+        detached: false,
+        stdio: 'ignore'
+      });
+
+      runningAHKScripts.set(scriptId, {
+        process: ahkProcess,
+        scriptPath: scriptPath
+      });
+
+      ahkProcess.on('exit', (code) => {
+        console.log(`AutoHotkey script ${scriptName} exited with code ${code}`);
+        runningAHKScripts.delete(scriptId);
+
+        try {
+          if (fs.existsSync(scriptPath)) {
+            fs.unlinkSync(scriptPath);
+          }
+        } catch (error) {
+          console.log('Could not clean up script file:', error.message);
+        }
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'ahk_stop',
+            scriptId: scriptId,
+            message: `Script "${scriptName}" has stopped.`
+          }));
+        }
+      });
+
       if (ws) {
         ws.send(JSON.stringify({
-          type: 'error',
-          message: msg
-        }));
-      }
-      return;
-    }
-
-    // Create temporary script file
-    const tempDir = os.tmpdir();
-    const scriptFileName = `ahk_script_${scriptId}.ahk`;
-    const scriptPath = path.join(tempDir, scriptFileName);
-
-    // Write script to file
-    fs.writeFileSync(scriptPath, processedScript, 'utf8');
-    console.log('Created AutoHotkey script:', scriptPath);
-
-    // Launch AutoHotkey script
-    const ahkProcess = spawn(ahkPath, [scriptPath], {
-      detached: false,
-      stdio: 'ignore'
-    });
-
-    // Store the running process
-    runningAHKScripts.set(scriptId, {
-      process: ahkProcess,
-      scriptPath: scriptPath
-    });
-
-    ahkProcess.on('exit', (code) => {
-      console.log(`AutoHotkey script ${scriptName} exited with code ${code}`);
-      runningAHKScripts.delete(scriptId);
-      
-      // Clean up script file
-      try {
-        if (fs.existsSync(scriptPath)) {
-          fs.unlinkSync(scriptPath);
-        }
-      } catch (error) {
-        console.log('Could not clean up script file:', error.message);
-      }
-
-      // Notify client if connected
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'ahk_stop',
+          type: 'ahk_start',
           scriptId: scriptId,
-          message: `Script "${scriptName}" has stopped.`
+          message: `Script "${scriptName}" started successfully.`
         }));
       }
-    });
-
-    if (ws) {
-      ws.send(JSON.stringify({
-        type: 'ahk_start',
-        scriptId: scriptId,
-        message: `Script "${scriptName}" started successfully.`
-      }));
     }
 
   } catch (error) {
-    console.error('Error running AutoHotkey script:', error);
+    console.error('Error running script:', error);
     if (ws) {
       ws.send(JSON.stringify({
         type: 'error',
@@ -1360,7 +1546,7 @@ async function handleAHKStop(ws, data) {
 
   try {
     const scriptInfo = runningAHKScripts.get(scriptId);
-    
+
     if (!scriptInfo) {
       ws.send(JSON.stringify({
         type: 'error',
@@ -1369,19 +1555,32 @@ async function handleAHKStop(ws, data) {
       return;
     }
 
-    // Kill the AutoHotkey process
-    scriptInfo.process.kill();
-    
-    // Clean up script file
-    try {
-      if (fs.existsSync(scriptInfo.scriptPath)) {
-        fs.unlinkSync(scriptInfo.scriptPath);
+    if (isLinux) {
+      // Linux: remove fragment and reload sxhkd
+      try {
+        if (scriptInfo.fragmentPath && fs.existsSync(scriptInfo.fragmentPath)) {
+          fs.unlinkSync(scriptInfo.fragmentPath);
+        }
+      } catch (error) {
+        console.log('Could not clean up fragment file:', error.message);
       }
-    } catch (error) {
-      console.log('Could not clean up script file:', error.message);
-    }
 
-    runningAHKScripts.delete(scriptId);
+      runningAHKScripts.delete(scriptId);
+      reloadOrStartSxhkd(ws);
+    } else {
+      // Windows: kill the AutoHotkey process
+      scriptInfo.process.kill();
+
+      try {
+        if (fs.existsSync(scriptInfo.scriptPath)) {
+          fs.unlinkSync(scriptInfo.scriptPath);
+        }
+      } catch (error) {
+        console.log('Could not clean up script file:', error.message);
+      }
+
+      runningAHKScripts.delete(scriptId);
+    }
 
     ws.send(JSON.stringify({
       type: 'ahk_stop',
@@ -1390,7 +1589,7 @@ async function handleAHKStop(ws, data) {
     }));
 
   } catch (error) {
-    console.error('Error stopping AutoHotkey script:', error);
+    console.error('Error stopping script:', error);
     ws.send(JSON.stringify({
       type: 'error',
       message: `Failed to stop script: ${error.message}`
@@ -1675,20 +1874,38 @@ function handleDeleteSecretKey(ws, data) {
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
-  
-  // Stop all running AutoHotkey scripts
-  for (const [scriptId, scriptInfo] of runningAHKScripts.entries()) {
-    try {
-      scriptInfo.process.kill();
-      if (fs.existsSync(scriptInfo.scriptPath)) {
-        fs.unlinkSync(scriptInfo.scriptPath);
+
+  if (isLinux) {
+    // Linux: stop sxhkd daemon and clean up fragments
+    stopSxhkdDaemon();
+    for (const [scriptId, scriptInfo] of runningAHKScripts.entries()) {
+      try {
+        if (scriptInfo.fragmentPath && fs.existsSync(scriptInfo.fragmentPath)) {
+          fs.unlinkSync(scriptInfo.fragmentPath);
+        }
+      } catch (error) {
+        console.log(`Could not clean up fragment for ${scriptId}:`, error.message);
       }
-    } catch (error) {
-      console.log(`Could not stop script ${scriptId}:`, error.message);
+    }
+    try {
+      if (fs.existsSync(SXHKD_COMPOSED_CONFIG)) fs.unlinkSync(SXHKD_COMPOSED_CONFIG);
+    } catch (e) { /* ignore */ }
+  } else {
+    // Windows: stop all running AutoHotkey scripts
+    for (const [scriptId, scriptInfo] of runningAHKScripts.entries()) {
+      try {
+        scriptInfo.process.kill();
+        if (fs.existsSync(scriptInfo.scriptPath)) {
+          fs.unlinkSync(scriptInfo.scriptPath);
+        }
+      } catch (error) {
+        console.log(`Could not stop script ${scriptId}:`, error.message);
+      }
     }
   }
+
   runningAHKScripts.clear();
-  
+
   server.close(() => {
     console.log('Server shut down');
     process.exit(0);
@@ -1706,8 +1923,13 @@ function startAutoStartScripts() {
       let count = 0;
       for (const [id, script] of Object.entries(hotkeyScripts)) {
         if (script.autoStart) {
+          const scriptContent = isLinux ? (script.contentLinux || '') : script.content;
+          if (!scriptContent || !scriptContent.trim()) {
+            console.log(`Skipping auto-start for "${script.name}" (${id}): no content for this platform.`);
+            continue;
+          }
           console.log(`Auto-starting script: ${script.name} (${id})`);
-          runAHKScriptInternal(id, script.content, script.name);
+          runAHKScriptInternal(id, scriptContent, script.name);
           count++;
         }
       }
@@ -1727,6 +1949,11 @@ server.listen(PORT, () => {
   console.log('API Endpoint /api/read-files is READY');
   console.log('===================================================');
   
+  // On Linux, clean up stale sxhkd fragments from previous crashes
+  if (isLinux) {
+    cleanupStaleSxhkdFragments();
+  }
+
   // Start auto-start scripts after server is up
   startAutoStartScripts();
 });

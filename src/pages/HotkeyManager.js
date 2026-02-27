@@ -17,7 +17,12 @@ const HotkeyManager = () => {
   const [runningScripts, setRunningScripts] = useState(new Set());
   const [currentWorkspace, setCurrentWorkspace] = useState('Default');
   const [workspaces, setWorkspaces] = useState([]);
+  const [hotkeyEngine, setHotkeyEngine] = useState('autohotkey');
+  const [editingPlatform, setEditingPlatform] = useState('windows');
+  const [scriptContentLinux, setScriptContentLinux] = useState('');
   const wsRef = useRef(null);
+
+  const isLinuxEngine = hotkeyEngine === 'sxhkd';
 
   const connectToBackend = () => {
     try {
@@ -110,6 +115,11 @@ const HotkeyManager = () => {
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
+      case 'platform_info':
+        if (data.hotkeyEngine) setHotkeyEngine(data.hotkeyEngine);
+        if (data.platform === 'linux') setEditingPlatform('linux');
+        break;
+
       case 'ahk_start':
         setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] ${data.message}\n`);
         if (data.scriptId) {
@@ -181,7 +191,9 @@ const HotkeyManager = () => {
     setSelectedScript(null);
     setScriptName('');
     setScriptContent('');
+    setScriptContentLinux('');
     setEditMode(true);
+    setEditingPlatform(isLinuxEngine ? 'linux' : 'windows');
   };
 
   const handleSelectScript = (scriptId) => {
@@ -189,16 +201,22 @@ const HotkeyManager = () => {
     if (script) {
       setSelectedScript(scriptId);
       setScriptName(script.name);
-      setScriptContent(script.content);
+      setScriptContent(script.content || '');
+      setScriptContentLinux(script.contentLinux || '');
       setCurrentView('edit');
       setEditMode(false);
       setOutput('');
+      setEditingPlatform(isLinuxEngine ? 'linux' : 'windows');
     }
   };
 
   const handleSaveScript = () => {
-    if (!scriptName.trim() || !scriptContent.trim()) {
-      alert('Please provide both script name and content');
+    if (!scriptName.trim()) {
+      alert('Please provide a script name');
+      return;
+    }
+    if (!scriptContent.trim() && !scriptContentLinux.trim()) {
+      alert('Please provide script content for at least one platform');
       return;
     }
 
@@ -208,6 +226,7 @@ const HotkeyManager = () => {
       [scriptId]: {
         name: scriptName.trim(),
         content: scriptContent,
+        contentLinux: scriptContentLinux,
         autoStart: scripts[scriptId]?.autoStart || false
       }
     };
@@ -234,6 +253,7 @@ const HotkeyManager = () => {
         setSelectedScript(null);
         setScriptName('');
         setScriptContent('');
+        setScriptContentLinux('');
       }
     }
   };
@@ -250,13 +270,19 @@ const HotkeyManager = () => {
       return;
     }
 
+    const platformContent = isLinuxEngine ? script.contentLinux : script.content;
+    if (!platformContent || !platformContent.trim()) {
+      alert(`No ${isLinuxEngine ? 'Linux' : 'Windows'} script content. Please edit the script and add content for this platform.`);
+      return;
+    }
+
     setOutput(`[${new Date().toLocaleTimeString()}] Starting "${script.name}"...\n`);
 
     try {
       const message = {
         type: 'ahk_run',
         scriptId: scriptId,
-        script: script.content,
+        script: platformContent,
         scriptName: script.name
       };
 
@@ -314,7 +340,7 @@ const HotkeyManager = () => {
           type: 'ahk_register_autostart',
           scriptId: scriptId,
           scriptName: script.name,
-          script: script.content
+          script: isLinuxEngine ? (script.contentLinux || '') : script.content
         }));
       } catch (error) {
         console.error('Error registering auto-start:', error);
@@ -345,7 +371,7 @@ const HotkeyManager = () => {
     <div className="script-list-view">
       <div className="view-header">
         <div className="header-title-group">
-          <h2>AutoHotkey Scripts</h2>
+          <h2>{hotkeyEngine === 'sxhkd' ? 'sxhkd Hotkey Bindings' : 'AutoHotkey Scripts'}</h2>
           <div className="workspace-badge">
             Workspace: 
             <select 
@@ -384,7 +410,7 @@ const HotkeyManager = () => {
 
       {Object.keys(scripts).length === 0 ? (
         <div className="empty-state">
-          <p>No AutoHotkey scripts yet. Create your first one!</p>
+          <p>{hotkeyEngine === 'sxhkd' ? 'No sxhkd hotkey scripts yet. Create your first one!' : 'No AutoHotkey scripts yet. Create your first one!'}</p>
           <button className="btn btn-primary" onClick={handleCreateNew}>
             + Create First Script
           </button>
@@ -413,7 +439,7 @@ const HotkeyManager = () => {
               
               {!compactView && (
                 <div className="script-preview">
-                  <pre>{script.content.substring(0, 150)}...</pre>
+                  <pre>{((isLinuxEngine ? script.contentLinux : script.content) || '').substring(0, 150)}...</pre>
                 </div>
               )}
               
@@ -515,25 +541,60 @@ const HotkeyManager = () => {
 
         <div className="form-group">
           <label htmlFor="scriptContent">
-            AutoHotkey Script
+            {editingPlatform === 'linux' ? 'sxhkd Config (Linux)' : 'AutoHotkey Script (Windows)'}
             <span className="label-hint">
-              (Use AutoHotkey v1 or v2 syntax)
+              {editingPlatform === 'linux'
+                ? '(Use sxhkd config syntax - hotkey on one line, command indented on the next)'
+                : '(Use AutoHotkey v1 or v2 syntax)'}
             </span>
           </label>
+          <div className="platform-tabs">
+            <button
+              className={`platform-tab ${editingPlatform === 'windows' ? 'active' : ''}`}
+              onClick={() => setEditingPlatform('windows')}
+            >
+              Windows (AutoHotkey)
+            </button>
+            <button
+              className={`platform-tab ${editingPlatform === 'linux' ? 'active' : ''}`}
+              onClick={() => setEditingPlatform('linux')}
+            >
+              Linux (sxhkd)
+            </button>
+          </div>
           <textarea
             id="scriptContent"
             className="form-textarea"
-            value={scriptContent}
-            onChange={(e) => setScriptContent(e.target.value)}
-            placeholder={`Example:
+            value={editingPlatform === 'linux' ? scriptContentLinux : scriptContent}
+            onChange={(e) => {
+              if (editingPlatform === 'linux') {
+                setScriptContentLinux(e.target.value);
+              } else {
+                setScriptContent(e.target.value);
+              }
+            }}
+            placeholder={editingPlatform === 'linux'
+              ? `Example:
+# Ctrl + Alt + 2 to open VSCode with specific project
+ctrl + alt + 2
+    code ~/Documents/project
+
+# Ctrl + Alt + 3 to open Firefox
+ctrl + alt + 3
+    firefox
+
+# Super + Return to open terminal
+super + Return
+    alacritty`
+              : `Example:
 ; Ctrl + Win + 2 to activate or open VSCode with specific project
 ^#2::
 {
     projectPath := "C:\\Users\\YourName\\Documents\\project"
-    
+
     ; Set title matching mode to search for partial titles
     SetTitleMatchMode, 2
-    
+
     ; Check if a VSCode window with this path exists
     if WinExist("project ahk_exe Code.exe") or WinExist(projectPath " ahk_exe Code.exe")
     {

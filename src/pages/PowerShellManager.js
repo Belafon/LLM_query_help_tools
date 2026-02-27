@@ -19,6 +19,9 @@ const PowerShellManager = () => {
   const [backendStatus, setBackendStatus] = useState('disconnected');
   const [currentWorkspace, setCurrentWorkspace] = useState('Default');
   const [workspaces, setWorkspaces] = useState([]);
+  const [isLinuxPlatform, setIsLinuxPlatform] = useState(false);
+  const [editingPlatform, setEditingPlatform] = useState('windows');
+  const [scriptContentLinux, setScriptContentLinux] = useState('');
   const wsRef = useRef(null);
 
   const connectToBackend = () => {
@@ -110,6 +113,13 @@ const PowerShellManager = () => {
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
+      case 'platform_info':
+        if (data.platform === 'linux') {
+          setIsLinuxPlatform(true);
+          setEditingPlatform('linux');
+        }
+        break;
+
       case 'execution_start':
         setCurrentSessionId(data.sessionId);
         setOutput(prev => prev + `[${new Date().toLocaleTimeString()}] ${data.message}\n`);
@@ -166,7 +176,9 @@ const PowerShellManager = () => {
     setScriptName('');
     setScriptContent('');
     setRunInBackground(false);
+    setScriptContentLinux('');
     setEditMode(true);
+    setEditingPlatform(isLinuxPlatform ? 'linux' : 'windows');
   };
 
   const handleSelectScript = (scriptId) => {
@@ -174,17 +186,23 @@ const PowerShellManager = () => {
     if (script) {
       setSelectedScript(scriptId);
       setScriptName(script.name);
-      setScriptContent(script.content);
+      setScriptContent(script.content || '');
+      setScriptContentLinux(script.contentLinux || '');
       setRunInBackground(script.runInBackground || false);
       setCurrentView('edit');
       setEditMode(false);
       setOutput('');
+      setEditingPlatform(isLinuxPlatform ? 'linux' : 'windows');
     }
   };
 
   const handleSaveScript = () => {
-    if (!scriptName.trim() || !scriptContent.trim()) {
-      alert('Please provide both script name and content');
+    if (!scriptName.trim()) {
+      alert('Please provide a script name');
+      return;
+    }
+    if (!scriptContent.trim() && !scriptContentLinux.trim()) {
+      alert('Please provide script content for at least one platform');
       return;
     }
 
@@ -194,6 +212,7 @@ const PowerShellManager = () => {
       [scriptId]: {
         name: scriptName.trim(),
         content: scriptContent,
+        contentLinux: scriptContentLinux,
         runInBackground: runInBackground
       }
     };
@@ -215,6 +234,7 @@ const PowerShellManager = () => {
         setSelectedScript(null);
         setScriptName('');
         setScriptContent('');
+        setScriptContentLinux('');
       }
     }
   };
@@ -237,9 +257,10 @@ const PowerShellManager = () => {
     setCurrentSessionId(null);
 
     try {
+      const platformContent = isLinuxPlatform ? (script.contentLinux || script.content) : script.content;
       const message = {
         type: 'execute',
-        script: script.content,
+        script: platformContent,
         scriptName: script.name,
         runInBackground: script.runInBackground || false
       };
@@ -252,8 +273,9 @@ const PowerShellManager = () => {
   };
 
   const executeScript = async () => {
-    if (!scriptContent.trim()) {
-      alert('No script content to execute');
+    const contentToRun = isLinuxPlatform ? (scriptContentLinux || scriptContent) : scriptContent;
+    if (!contentToRun || !contentToRun.trim()) {
+      alert('No script content to execute for this platform');
       return;
     }
 
@@ -267,13 +289,9 @@ const PowerShellManager = () => {
     setOutput(`[${new Date().toLocaleTimeString()}] Preparing to execute "${scriptName || 'Unnamed Script'}"${bgMode}...\n`);
 
     try {
-      console.log('Sending script content:', scriptContent.substring(0, 200) + '...');
-      console.log('Script name:', scriptName);
-      console.log('Run in background:', runInBackground);
-
       const message = {
         type: 'execute',
-        script: scriptContent,
+        script: contentToRun,
         scriptName: scriptName || 'Unnamed Script',
         runInBackground: runInBackground
       };
@@ -301,7 +319,7 @@ const PowerShellManager = () => {
     <div className="script-list-view">
       <div className="view-header">
         <div className="header-title-group">
-          <h2>PowerShell Scripts</h2>
+          <h2>{isLinuxPlatform ? 'Shell Scripts' : 'PowerShell Scripts'}</h2>
           <div className="workspace-badge">
             Workspace: 
             <select 
@@ -333,7 +351,7 @@ const PowerShellManager = () => {
       
       {Object.keys(scripts).length === 0 ? (
         <div className="empty-state">
-          <p>No scripts found. Create your first PowerShell script!</p>
+          <p>{isLinuxPlatform ? 'No scripts found. Create your first Bash script!' : 'No scripts found. Create your first PowerShell script!'}</p>
         </div>
       ) : (
         <div className={compactView ? 'script-list-compact' : 'scripts-grid'}>
@@ -438,10 +456,10 @@ const PowerShellManager = () => {
             </button>
           )}
 
-          <button 
+          <button
             className="btn btn-success"
             onClick={executeScript}
-            disabled={isExecuting || !scriptContent.trim() || backendStatus !== 'connected'}
+            disabled={isExecuting || (!(isLinuxPlatform ? (scriptContentLinux || scriptContent) : scriptContent).trim()) || backendStatus !== 'connected'}
           >
             {isExecuting ? 'Executing...' : 'Execute'}
           </button>
@@ -463,13 +481,47 @@ const PowerShellManager = () => {
           </div>
           
           <div className="input-group">
-            <label htmlFor="scriptContent">PowerShell Script:</label>
+            <label htmlFor="scriptContent">
+              {editingPlatform === 'linux' ? 'Bash Script (Linux):' : 'PowerShell Script (Windows):'}
+            </label>
+            <div className="platform-tabs">
+              <button
+                className={`platform-tab ${editingPlatform === 'windows' ? 'active' : ''}`}
+                onClick={() => setEditingPlatform('windows')}
+              >
+                Windows (PowerShell)
+              </button>
+              <button
+                className={`platform-tab ${editingPlatform === 'linux' ? 'active' : ''}`}
+                onClick={() => setEditingPlatform('linux')}
+              >
+                Linux (Bash)
+              </button>
+            </div>
             <textarea
               id="scriptContent"
-              value={scriptContent}
-              onChange={(e) => setScriptContent(e.target.value)}
+              value={editingPlatform === 'linux' ? scriptContentLinux : scriptContent}
+              onChange={(e) => {
+                if (editingPlatform === 'linux') {
+                  setScriptContentLinux(e.target.value);
+                } else {
+                  setScriptContent(e.target.value);
+                }
+              }}
               disabled={!editMode}
-              placeholder="Enter your PowerShell script here..."
+              placeholder={editingPlatform === 'linux'
+                ? `Example:
+#!/bin/bash
+# Navigate to project directory
+cd ~/Documents/project
+
+# Run build
+npm run build
+
+# Show results
+echo "Build complete"
+ls -la dist/`
+                : `Enter your PowerShell script here...`}
               rows={15}
             />
           </div>
@@ -499,11 +551,11 @@ const PowerShellManager = () => {
             <pre className="output-content">{output}</pre>
             <div className="console-info">
               {runInBackground ? (
-                <p><strong>Note:</strong> Your PowerShell script is running in the background (hidden).
+                <p><strong>Note:</strong> Your {isLinuxPlatform ? 'script' : 'PowerShell script'} is running in the background (hidden).
                 The script will close automatically when completed.</p>
               ) : (
-                <p><strong>Note:</strong> Your PowerShell script is running in a separate console window.
-                This allows for interactive input and better visibility. The console window will automatically
+                <p><strong>Note:</strong> Your {isLinuxPlatform ? 'script' : 'PowerShell script'} is running in a separate {isLinuxPlatform ? 'terminal' : 'console'} window.
+                This allows for interactive input and better visibility. The {isLinuxPlatform ? 'terminal' : 'console'} window will automatically
                 close when the script completes, or you can close it manually.</p>
               )}
             </div>

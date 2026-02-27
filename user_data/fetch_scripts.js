@@ -59,9 +59,13 @@ try {
             return (a.name || '').localeCompare(b.name || '');
         });
         
+        const isLinux = process.platform === 'linux' || process.platform === 'darwin';
+
         console.log("---START---");
         for (const script of scriptArray) {
-            const contentBase64 = Buffer.from(script.content || '').toString('base64');
+            // Use Linux content when available and on Linux
+            const rawContent = (isLinux && script.contentLinux) ? script.contentLinux : (script.content || '');
+            const contentBase64 = Buffer.from(rawContent).toString('base64');
             // Output: ID|Name|Description|Base64Content|RunInBackground
             // Sanitize Name and Description to remove pipes and newlines
             const name = (script.name || '').replace(/\|/g, '-').replace(/[\r\n]+/g, ' ');

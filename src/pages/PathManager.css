@@ -218,7 +218,8 @@ th {
   background-color: #5a6268;
 }
 
-.edit-alias-input {
+.edit-alias-input,
+.edit-path-input {
   background-color: #3c3c3c;
   border: 1px solid #007acc;
   color: white;

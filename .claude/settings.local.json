@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(pgrep -a sxhkd)",
+      "Bash(gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ binding '<Control>4')",
+      "Bash(node -e \":*)",
+      "Bash(node --version)",
+      "Bash(node -e \"console.log\\(''hello''\\)\")",
+      "Bash(echo \"RC=$?\")"
     ]
   }
 }
