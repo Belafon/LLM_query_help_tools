@@ -520,7 +520,12 @@ function pathPointsToExecutable(filePath) {
   try {
     const stats = fs.lstatSync(filePath);
     return stats.isFile() || stats.isSymbolicLink();
-  } catch {
+  } catch (err) {
+    // On Windows, Microsoft Store app execution aliases return EACCES on lstat
+    // but are still valid executables that can be spawned.
+    if (err.code === 'EACCES' && process.platform === 'win32') {
+      return true;
+    }
     return false;
   }
 }
@@ -1906,6 +1911,16 @@ process.on('SIGINT', () => {
 
   runningAHKScripts.clear();
 
+  // Stop launcher GUI
+  if (launcherProcess) {
+    try {
+      launcherProcess.kill();
+    } catch (e) {
+      console.log('Could not stop launcher GUI:', e.message);
+    }
+    launcherProcess = null;
+  }
+
   server.close(() => {
     console.log('Server shut down');
     process.exit(0);
@@ -1942,6 +1957,39 @@ function startAutoStartScripts() {
   }
 }
 
+let launcherProcess = null;
+
+function startLauncherGui() {
+  const launcherPath = path.join(__dirname, '..', 'user_data', 'launcher_gui.ahk');
+  if (!fs.existsSync(launcherPath)) {
+    console.log('Launcher GUI not found at:', launcherPath);
+    return;
+  }
+
+  const ahkPath = findAutoHotkeyExecutable();
+  if (!ahkPath) {
+    console.log('Cannot start launcher GUI: AutoHotkey executable not found.');
+    return;
+  }
+
+  console.log('Starting launcher GUI (Ctrl+F4)...');
+  launcherProcess = spawn(ahkPath, [launcherPath], {
+    cwd: path.join(__dirname, '..', 'user_data'),
+    detached: false,
+    stdio: 'ignore'
+  });
+
+  launcherProcess.on('exit', (code) => {
+    console.log(`Launcher GUI exited with code ${code}`);
+    launcherProcess = null;
+  });
+
+  launcherProcess.on('error', (err) => {
+    console.error('Failed to start launcher GUI:', err.message);
+    launcherProcess = null;
+  });
+}
+
 server.listen(PORT, () => {
   console.log('===================================================');
   console.log(`PowerShell Backend Service running on port ${PORT}`);
@@ -1956,4 +2004,9 @@ server.listen(PORT, () => {
 
   // Start auto-start scripts after server is up
   startAutoStartScripts();
+
+  // On Windows, auto-start the launcher GUI (Ctrl+F4 hotkey)
+  if (isWindows) {
+    startLauncherGui();
+  }
 });

@@ -7,7 +7,10 @@
       "Bash(node -e \":*)",
       "Bash(node --version)",
       "Bash(node -e \"console.log\\(''hello''\\)\")",
-      "Bash(echo \"RC=$?\")"
+      "Bash(echo \"RC=$?\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const path=require\\(''path''\\);const dir=path.join\\(process.env.LOCALAPPDATA,''Microsoft'',''WindowsApps''\\);[''AutoHotkey.exe''].forEach\\(n=>{const p=path.join\\(dir,n\\);const s=fs.lstatSync\\(p\\);console.log\\(''isFile:'',s.isFile\\(\\),''isSymlink:'',s.isSymbolicLink\\(\\),''isDir:'',s.isDirectory\\(\\),''mode:'',s.mode.toString\\(8\\),''size:'',s.size\\);const s2=fs.statSync\\(p\\);console.log\\(''stat isFile:'',s2.isFile\\(\\),''isSymlink:'',s2.isSymbolicLink\\(\\)\\)}\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const path=require\\(''path''\\);const dir=path.join\\(process.env.LOCALAPPDATA,''Microsoft'',''WindowsApps''\\);[''AutoHotkey.exe'',''AutoHotkeyV2.exe'',''AutoHotkeyV1.exe''].forEach\\(n=>{const p=path.join\\(dir,n\\);try{const s=fs.lstatSync\\(p\\);const ok=s.isFile\\(\\)||s.isSymbolicLink\\(\\);console.log\\(n,''->'',ok,''\\(isFile:'',s.isFile\\(\\),''isSymlink:'',s.isSymbolicLink\\(\\),''\\)''\\)}catch\\(e\\){console.log\\(n,''error:'',e.code\\)}}\\)\")",
+      "Bash(node -e \"var fs=require\\(''fs''\\),path=require\\(''path''\\);var la=process.env.LOCALAPPDATA;var dir=path.join\\(la,''Microsoft'',''WindowsApps''\\);var names=[''AutoHotkey64.exe'',''AutoHotkey32.exe'',''AutoHotkey.exe''];for\\(var i=0;i<names.length;i++\\){var p=path.join\\(dir,names[i]\\);try{var s=fs.lstatSync\\(p\\);if\\(s.isFile\\(\\)||s.isSymbolicLink\\(\\)\\){console.log\\(''FOUND:'',p\\);break}}catch\\(e\\){continue}}\")"
     ]
   }
 }
