@@ -6,9 +6,10 @@
       "contentLinux": "#!/bin/bash\ncd \"{{DB_DIR}}\"\n\npwsh -NoProfile -Command './publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended'"
     },
     "1758898124694": {
-      "name": "update Identlock2 + Reflect",
-      "content": "cd {{DB_DIR}}\\\n& git pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"IdentLock2\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\"",
-      "contentLinux": "#!/bin/bash\nset -e\ncd \"{{DB_DIR}}\"\ngit pull\npwsh -NoProfile -Command './publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2\" -SqlUser \"IdentLock2\" -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" -DeploymentEnvironment \"Stage\" -BuildDate $(date +%y%m%d)'\ncd \"{{DB_REFLECTOR}}/DbReflector.CLI\"\ndotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\""
+      "name": "update Identlock2-2.10-Test + Reflect",
+      "content": "cd {{DB_DIR}}\\\ngit pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"IdentLock2-2.10-Test\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\ncd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\ncd \"{{WEBAPI_DIR}}\\src\\Identlock2.Domain\" ; powershell -ExecutionPolicy Bypass -File \"./reflect-from-tool.ps1\" -Database \"IdentLock2-2.10-Test\" -ConnectionString \"Server=10.200.60.21;Database=IdentLock2-2.10-Test;User=IdentLock2;Password={{SQL_PASSWORD_STAGE}};TrustServerCertificate=True;\"",
+      "contentLinux": "#!/bin/bash\nset -e\ncd \"{{DB_DIR}}\"\ngit pull\npwsh -NoProfile -Command './publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2\" -SqlUser \"IdentLock2\" -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" -DeploymentEnvironment \"Stage\" -BuildDate $(date +%y%m%d)'\ncd \"{{DB_REFLECTOR}}/DbReflector.CLI\"\ndotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\"",
+      "runInBackground": false
     },
     "1759134386739": {
       "name": "update stage db",
@@ -99,6 +100,12 @@
       "name": "copy test db prompt sqlcmd",
       "content": "$text = @'\nuse direct sql queries using sqlcmd over this database   },\n  \"Repositories\": {\n    \"IdentLock\": {\n      \"ConnectionString\": \"Server=10.200.60.21;Database=IdentLock2-2.10-Test;User=IdentLock2;Password=shgZ4Kjk8xNduymekoZg;TrustServerCertificate=True;Min Pool Size=1;Max Pool Size=500\",\n      \"ProviderType\": \"SqlServer\",\n      \"ConnectionPersistency\": \"Instance\",\n      \"CommandTimeout\": 300\n    }\n  },\n  \"ThrottlingConfiguration\": {\n'@\n\nSet-Clipboard -Value $text\nWrite-Host \"Copied to clipboard. Press Ctrl+V to paste.\"",
       "runInBackground": true
+    },
+    "1772711386353": {
+      "name": "update Identlock2-2.10-Test + Reflect from project",
+      "content": "cd {{DB_DIR}}\\\n& git pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"Database=Identlock2-2.10-Test\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\"",
+      "contentLinux": "",
+      "runInBackground": false
     }
   },
   "hotkey-scripts": {
