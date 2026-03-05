@@ -22,11 +22,48 @@ if (platform === 'win32') {
     process.exit(1);
   }
 
+  // Find AutoHotkey executable instead of relying on file association
+  const serverPath = path.join(__dirname, '..', 'backend', 'server.js');
+  let findAhk;
+  try {
+    // Reuse the backend's findAutoHotkeyExecutable if available
+    const serverModule = require(serverPath);
+    findAhk = serverModule.findAutoHotkeyExecutable;
+  } catch (e) {
+    findAhk = null;
+  }
+
+  let ahkExe = null;
+  if (findAhk) {
+    ahkExe = findAhk();
+  }
+  if (!ahkExe) {
+    // Fallback: check common locations
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const candidates = [
+      path.join(localAppData, 'Programs', 'AutoHotkey', 'v2', 'AutoHotkey64.exe'),
+      path.join(localAppData, 'Programs', 'AutoHotkey', 'v2', 'AutoHotkey32.exe'),
+      path.join(programFiles, 'AutoHotkey', 'v2', 'AutoHotkey64.exe'),
+      path.join(programFiles, 'AutoHotkey', 'v2', 'AutoHotkey32.exe'),
+      path.join(programFiles, 'AutoHotkey', 'AutoHotkey.exe'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) { ahkExe = c; break; }
+    }
+  }
+
+  if (!ahkExe) {
+    console.error('AutoHotkey executable not found. Install AutoHotkey v2 or set AUTOHOTKEY_PATH env var.');
+    process.exit(1);
+  }
+
+  console.log(`Found AutoHotkey at: ${ahkExe}`);
   console.log('Starting AutoHotkey launcher...');
   console.log('Press Ctrl+F4 to open the script launcher.');
 
-  // Use 'start' to launch AHK without blocking
-  const proc = spawn('cmd.exe', ['/c', 'start', '""', ahkScript], {
+  // Launch AHK directly with the script path
+  const proc = spawn(ahkExe, [ahkScript], {
     cwd: userDataDir,
     detached: true,
     stdio: 'ignore'

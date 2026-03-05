@@ -1,23 +1,35 @@
 [
   {
-    "alias": "DB_DIR",
-    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\database"
-  },
-  {
     "alias": "DB_REFLECTOR",
-    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\repos\\DbReflector"
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\DbReflector"
   },
   {
-    "alias": "RESTAPI_REPO",
-    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\repos\\RD_IDENTLOCK2_RESTAPI"
+    "alias": "WEBDESK_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\IdentLock.WebDesk"
   },
   {
     "alias": "DESK_REPO",
-    "path": "C:\\Users\\ondrej.tichavsky\\source\\repos\\IDENTLOCK2_DESK"
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\IDENTLOCK2_DESK"
   },
   {
-    "alias": "ANALYTICS_REPO",
-    "path": "C:\\Users\\ondrej.tichavsky\\source\\repos\\IdentLock.Services.Analytics"
+    "alias": "IDENTLOCK_DB",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\IdentLockDatabase"
+  },
+  {
+    "alias": "LLM_TOOLS",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\LLM_query_help_tools"
+  },
+  {
+    "alias": "DOMAIN_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RD_IDENTLOCK2_DOMAIN"
+  },
+  {
+    "alias": "RESTAPI_REPO",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RD_IDENTLOCK2_RESTAPI"
+  },
+  {
+    "alias": "SWAGGER_CONVERTER",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\SwaggerToWordConverter"
   },
   {
     "alias": "TEST_IMAGES",
@@ -30,9 +42,5 @@
   {
     "alias": "VSCODE_EXE",
     "path": "C:\\Users\\ondrej.tichavsky\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
-  },
-  {
-    "alias": "WEBAPI_DIR",
-    "path": "C:\\Users\\ondrej.tichavsky\\Documents\\trash\\5"
   }
 ]
