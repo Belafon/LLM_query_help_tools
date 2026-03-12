@@ -160,8 +160,15 @@ const Launcher = () => {
               className={`launcher-item ${index === selectedIndex ? 'selected' : ''}`}
               onClick={() => { setSelectedIndex(index); executeScript(); }}
               onMouseEnter={() => setSelectedIndex(index)}
+              style={{ width: '100%' }}
             >
-              <span className="launcher-item-name">{script.name}</span>
+              <span
+                className="launcher-item-name"
+                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                title={script.name}
+              >
+                {script.name}
+              </span>
               {script.description && <span className="launcher-item-desc">{script.description}</span>}
             </div>
           ))}

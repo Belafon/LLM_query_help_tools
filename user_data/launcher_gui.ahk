@@ -5,6 +5,7 @@ SetWorkingDir(A_ScriptDir)
 
 ; Configuration
 BackendUrl := "http://localhost:3456"
+LauncherWidth := 720
 
 ; Global Variables
 Scripts := []
@@ -16,7 +17,7 @@ isVisible := false
 BuildGui()
 
 BuildGui() {
-    global myGui, searchCtrl, lvCtrl
+    global myGui, searchCtrl, lvCtrl, LauncherWidth
 
     myGui := Gui("+AlwaysOnTop +ToolWindow -Caption +Border")
     myGui.BackColor := "1e1e1e"
@@ -24,16 +25,23 @@ BuildGui() {
     myGui.MarginX := 0
     myGui.MarginY := 0
 
-    searchCtrl := myGui.Add("Edit", "vSearchTerm w600 Background252526")
+    searchCtrl := myGui.Add("Edit", "vSearchTerm w" . LauncherWidth . " Background252526")
     searchCtrl.OnEvent("Change", OnSearch)
 
-    lvCtrl := myGui.Add("ListView", "vScriptList w600 h400 -Hdr -Multi Background252526", ["Name", "Description", "ID"])
-    lvCtrl.ModifyCol(1, 200)
-    lvCtrl.ModifyCol(2, 380)
-    lvCtrl.ModifyCol(3, 0)
+    lvCtrl := myGui.Add("ListView", "vScriptList w" . LauncherWidth . " h400 -Hdr -Multi Background252526", ["Name", "Description", "ID"])
+    UpdateListColumns()
     lvCtrl.OnEvent("DoubleClick", OnDoubleClick)
 
     myGui.OnEvent("Escape", OnEscape)
+}
+
+UpdateListColumns() {
+    global lvCtrl, LauncherWidth
+
+    ; Keep the script name visible across the full launcher width.
+    lvCtrl.ModifyCol(1, Max(LauncherWidth - 24, 200))
+    lvCtrl.ModifyCol(2, 0)
+    lvCtrl.ModifyCol(3, 0)
 }
 
 ; Hotkey to toggle launcher (Ctrl+F4)
