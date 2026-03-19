@@ -79,6 +79,27 @@
 
 .launcher-item-name {
   font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.launcher-item-name[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  background: #222;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  z-index: 1002;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  white-space: normal;
 }
 
 .launcher-item-desc {

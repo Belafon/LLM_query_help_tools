@@ -1,5 +1,9 @@
 [
   {
+    "alias": "DB_DIR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi\\IdentLockDatabase"
+  },
+  {
     "alias": "DB_REFLECTOR",
     "path": "C:\\Users\\ondrej.tichavsky\\Sources\\DbReflector"
   },
@@ -13,7 +17,7 @@
   },
   {
     "alias": "IDENTLOCK_DB",
-    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\IdentLockDatabase"
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi\\IdentLockDatabase"
   },
   {
     "alias": "LLM_TOOLS",
@@ -25,7 +29,7 @@
   },
   {
     "alias": "RESTAPI_REPO",
-    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RD_IDENTLOCK2_RESTAPI"
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi\\RD_IDENTLOCK2_RESTAPI"
   },
   {
     "alias": "SWAGGER_CONVERTER",
@@ -42,5 +46,53 @@
   {
     "alias": "VSCODE_EXE",
     "path": "C:\\Users\\ondrej.tichavsky\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+  },
+  {
+    "alias": "WEBAPI_DIR",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi\\RD_IDENTLOCK2_RESTAPI"
+  },
+  {
+    "alias": "DB_REFLECTOR2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\DbReflector2"
+  },
+  {
+    "alias": "WEBDESK_REPO2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\IdentLock.WebDesk2"
+  },
+  {
+    "alias": "DESK_REPO2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\IDENTLOCK2_DESK2"
+  },
+  {
+    "alias": "DB_DIR2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi2\\IdentLockDatabase"
+  },
+  {
+    "alias": "LLM_TOOLS2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\LLM_query_help_tools2"
+  },
+  {
+    "alias": "DOMAIN_REPO2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\RD_IDENTLOCK2_DOMAIN2"
+  },
+  {
+    "alias": "RESTAPI_REPO2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\RD_IDENTLOCK2_RESTAPI2"
+  },
+  {
+    "alias": "SWAGGER_CONVERTER2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\SwaggerToWordConverter2"
+  },
+  {
+    "alias": "WEBAPI_DIR2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\RD_IDENTLOCK2_RESTAPI2"
+  },
+  {
+    "alias": "IDENTLOCK_DB2",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources2\\IdentLockDatabase2"
+  },
+  {
+    "alias": "DB_DIR3",
+    "path": "C:\\Users\\ondrej.tichavsky\\Sources\\RestApi3\\IdentLockDatabase"
   }
 ]

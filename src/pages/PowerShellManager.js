@@ -165,6 +165,10 @@ const PowerShellManager = () => {
         setCurrentSessionId(null);
         break;
       
+      case 'warning':
+        setOutput(prev => prev + `[WARNING] ${data.message}\n`);
+        break;
+      
       default:
         console.log('Unknown message type:', data.type);
     }
