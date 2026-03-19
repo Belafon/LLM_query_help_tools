@@ -2,8 +2,9 @@
   "powershell-scripts": {
     "1758889935177": {
       "name": "update test 2.10 database",
-      "content": "cd {{DB_DIR}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended",
-      "contentLinux": "#!/bin/bash\ncd \"{{DB_DIR}}\"\n\npwsh -NoProfile -Command './publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended'"
+      "content": "cd {{DB_DIR2}}\\\n\n& .\\publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2\" -Unattended",
+      "contentLinux": "#!/bin/bash\ncd \"{{DB_DIR}}\"\n\npwsh -NoProfile -Command './publish-db.ps1 -Version \"2.11\" -DatabaseHostname \"10.200.60.21\" -DatabaseName \"IdentLock2-2.10-Test\" -Unattended'",
+      "runInBackground": false
     },
     "1758898124694": {
       "name": "update Identlock2-2.10-Test + Reflect",
@@ -104,6 +105,18 @@
     "1772711386353": {
       "name": "update Identlock2-2.10-Test + Reflect from project",
       "content": "cd {{DB_DIR}}\\\n& git pull\n& \"{{DB_DIR}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"Database=Identlock2-2.10-Test\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra\"",
+      "contentLinux": "",
+      "runInBackground": false
+    },
+    "1773925515216": {
+      "name": "update2 Identlock2-2.10-Test + Reflect",
+      "content": "cd {{DB_DIR2}}\\\n& git pull\n& \"{{DB_DIR2}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"Database=Identlock2-2.10-Test\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra2\"",
+      "contentLinux": "",
+      "runInBackground": false
+    },
+    "1773925624998": {
+      "name": "update3 Identlock2-2.10-Test + Reflect",
+      "content": "cd {{DB_DIR3}}\\\n& git pull\n& \"{{DB_DIR3}}\\publish-db.ps1\" `\n    -Version \"2.11\" `\n    -DatabaseHostname \"10.200.60.21\" `\n    -DatabaseName \"Database=Identlock2-2.10-Test\" `\n    -SqlUser \"IdentLock2\" `\n    -SqlPassword \"{{SQL_PASSWORD_STAGE}}\" `\n    -DeploymentEnvironment \"Stage\" `\n    -BuildDate (Get-Date -Format \"yyMMdd\")\n& cd \"{{DB_REFLECTOR}}\\DbReflector.CLI\"\n& dotnet run --launch-profile \"10.200.60.20 IdentLock2 - Ondra3\"",
       "contentLinux": "",
       "runInBackground": false
     }
